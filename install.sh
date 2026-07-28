@@ -103,16 +103,24 @@ Arch    : $ARCH
 #############################################
 
 
+while true
+do
 read -p "
 Project Name:
 > " PROJECT
+[ -n "$PROJECT" ] && break
+echo "Project name cannot be empty"
+done
 
 
-
+while true
+do
 read -p "
 Git Repository:
 > " REPO
-
+[ -n "$REPO" ] && break
+echo "Repository URL cannot be empty"
+done
 
 
 read -p "
@@ -144,9 +152,14 @@ read -p "Choose:
 if [ "$MODE" = "1" ]
 then
 
+while true
+do
 read -p "
 Domain:
 > " DOMAIN
+[ -n "$DOMAIN" ] && break
+echo "Domain cannot be empty"
+done
 
 USE_SSL=true
 
@@ -171,23 +184,35 @@ Database
 
 
 
+while true
+do
 read -p "
 Database Name:
 > " DB_NAME
+[ -n "$DB_NAME" ] && break
+echo "Database name cannot be empty"
+done
 
 
-
+while true
+do
 read -p "
 Database User:
 > " DB_USER
+[ -n "$DB_USER" ] && break
+echo "Database user cannot be empty"
+done
 
 
-
+while true
+do
 read -s -p "
 Database Password:
 > " DB_PASS
-
 echo
+[ -n "$DB_PASS" ] && break
+echo "Database password cannot be empty"
+done
 
 
 
