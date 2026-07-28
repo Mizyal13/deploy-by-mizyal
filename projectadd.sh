@@ -4,9 +4,39 @@ set -Eeuo pipefail
 
 VERSION="2.0"
 
+G='\033[0;32m'
+BG='\033[1;32m'
+DG='\033[2;32m'
+LG='\033[92m'
+Y='\033[1;33m'
+R='\033[0;31m'
+C='\033[0;36m'
+NC='\033[0m'
+
+print_logo() {
+    echo -e "${BG}"
+    echo "(           (    (        )      )             )     *     (        )      )          (     "
+    echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
+    echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
+    echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
+    echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
+    echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
+    echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
+    echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    echo -e "${NC}"
+}
+
+print_line() { echo -e "${DG}─────────────────────────────────────────${NC}"; }
+print_ok()   { echo -e "  ${BG}[OK]${NC}    $1"; }
+print_warn() { echo -e "  ${Y}[WARN]${NC}  $1"; }
+print_fail() { echo -e "  ${R}[FAIL]${NC}  $1"; }
+
 error_exit() {
     echo ""
-    echo "ERROR: $1"
+    echo -e "  ${R}╔═════════════════════════════════════╗${NC}"
+    echo -e "  ${R}║  ✗ ERROR                           ║${NC}"
+    echo -e "  ${R}║  $1${NC}"
+    echo -e "  ${R}╚═════════════════════════════════════╝${NC}"
     echo ""
     exit 1
 }
@@ -16,10 +46,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 clear
-echo "====================================="
-echo "  DEPLOY BY MIZYAL"
-echo "  Add New Project"
-echo "====================================="
+print_logo
+print_line
+echo -e "  ${C}ADD PROJECT  v$VERSION${NC}"
+print_line
 echo ""
 
 command -v apache2 >/dev/null || error_exit "Apache2 not found. Run install.sh first."
@@ -29,38 +59,36 @@ command -v composer >/dev/null || error_exit "Composer not found. Run install.sh
 
 PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 
-# --- input ---
-
 while true; do
-    read -p "Project Name: " PROJECT </dev/tty
+    read -p "  Project Name: " PROJECT </dev/tty
     [ -n "$PROJECT" ] && break
-    echo "Cannot be empty"
+    echo -e "  ${R}Cannot be empty${NC}"
 done
 
 WEB="/var/www/$PROJECT"
 [ -d "$WEB" ] && error_exit "Project '$PROJECT' already exists"
 
 while true; do
-    read -p "Git Repository: " REPO </dev/tty
+    read -p "  Git Repository: " REPO </dev/tty
     [ -n "$REPO" ] && break
-    echo "Cannot be empty"
+    echo -e "  ${R}Cannot be empty${NC}"
 done
 
-read -p "Branch [main]: " BRANCH </dev/tty
+read -p "  Branch [main]: " BRANCH </dev/tty
 BRANCH=${BRANCH:-main}
 
 echo ""
-echo "Deployment Type:"
-echo "  1. Domain (with SSL)"
-echo "  2. IP Address (without SSL)"
+echo -e "  ${BG}Deployment Type:${NC}"
+echo -e "  ${BG}1${NC}. Domain (with SSL)"
+echo -e "  ${BG}2${NC}. IP Address (without SSL)"
 echo ""
-read -p "Choose [1/2]: " MODE </dev/tty
+read -p "  Choose [1/2]: " MODE </dev/tty
 
 if [ "$MODE" = "1" ]; then
     while true; do
-        read -p "Domain: " DOMAIN </dev/tty
+        read -p "  Domain: " DOMAIN </dev/tty
         [ -n "$DOMAIN" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
     USE_SSL=true
 else
@@ -69,41 +97,37 @@ else
 fi
 
 echo ""
-echo "Database"
+echo -e "  ${BG}Database${NC}"
 echo ""
 
 while true; do
-    read -p "Database Name: " DB_NAME </dev/tty
+    read -p "  Database Name: " DB_NAME </dev/tty
     [ -n "$DB_NAME" ] && break
-    echo "Cannot be empty"
+    echo -e "  ${R}Cannot be empty${NC}"
 done
-
 while true; do
-    read -p "Database User: " DB_USER </dev/tty
+    read -p "  Database User: " DB_USER </dev/tty
     [ -n "$DB_USER" ] && break
-    echo "Cannot be empty"
+    echo -e "  ${R}Cannot be empty${NC}"
 done
-
 while true; do
-    read -s -p "Database Password: " DB_PASS </dev/tty
+    read -s -p "  Database Password: " DB_PASS </dev/tty
     echo
     [ -n "$DB_PASS" ] && break
-    echo "Cannot be empty"
+    echo -e "  ${R}Cannot be empty${NC}"
 done
 
-# --- step 1: clone ---
-
 echo ""
-echo "[1/7] Downloading project"
-echo ""
+print_line
+echo -e "  ${C}[1/7] Downloading project${NC}"
+print_line
 mkdir -p /var/www
 git clone --branch "$BRANCH" "$REPO" "$WEB" || error_exit "Git clone failed"
 
-# --- step 2: database ---
-
 echo ""
-echo "[2/7] Creating database"
-echo ""
+print_line
+echo -e "  ${C}[2/7] Creating database${NC}"
+print_line
 mysql -u root <<SQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
 CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';
@@ -111,13 +135,11 @@ GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 
-# --- step 3: apache config ---
-
 echo ""
-echo "[3/7] Configuring Apache"
-echo ""
+print_line
+echo -e "  ${C}[3/7] Configuring Apache${NC}"
+print_line
 a2enmod rewrite proxy_fcgi setenvif || true
-
 cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
 <VirtualHost *:80>
     ServerName $DOMAIN
@@ -136,92 +158,82 @@ cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
     CustomLog \${APACHE_LOG_DIR}/$PROJECT-access.log combined
 </VirtualHost>
 EOF
-
 a2ensite "$PROJECT.conf"
 systemctl reload apache2
 
-# --- step 4: permissions ---
-
 echo ""
-echo "[4/7] Setting permissions"
-echo ""
+print_line
+echo -e "  ${C}[4/7] Setting permissions${NC}"
+print_line
 chown -R www-data:www-data "$WEB"
 find "$WEB" -type d -exec chmod 755 {} \;
 find "$WEB" -type f -exec chmod 644 {} \;
 
-# --- step 5: framework detect ---
-
 echo ""
-echo "[5/7] Detecting framework"
-echo ""
+print_line
+echo -e "  ${C}[5/7] Detecting framework${NC}"
+print_line
 cd "$WEB"
-
 if [ -f artisan ]; then
-    echo "Laravel detected"
+    print_ok "Laravel detected"
     composer install --no-dev --optimize-autoloader || true
     php artisan key:generate || true
     php artisan storage:link || true
     php artisan config:cache || true
 elif [ -f composer.json ]; then
-    echo "Composer project"
+    print_ok "Composer project"
     composer install || true
 else
-    echo "PHP Native"
+    print_ok "PHP Native"
 fi
 
-# --- step 6: admin account ---
-
 echo ""
-echo "[6/7] Admin account"
-echo ""
-read -p "Create admin account? [y/n]: " CREATE_ADMIN </dev/tty
+print_line
+echo -e "  ${C}[6/7] Admin account${NC}"
+print_line
+read -p "  Create admin account? [y/n]: " CREATE_ADMIN </dev/tty
 
 if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
-
     IS_LARAVEL=false
     [ -f "$WEB/artisan" ] && IS_LARAVEL=true
 
     while true; do
-        read -p "Table Name: " ADMIN_TABLE </dev/tty
+        read -p "  Table Name: " ADMIN_TABLE </dev/tty
         [ -n "$ADMIN_TABLE" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
-
     while true; do
-        read -p "Username/Email Column: " ADMIN_USER_COL </dev/tty
+        read -p "  Username/Email Column: " ADMIN_USER_COL </dev/tty
         [ -n "$ADMIN_USER_COL" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
-
     while true; do
-        read -p "Password Column: " ADMIN_PASS_COL </dev/tty
+        read -p "  Password Column: " ADMIN_PASS_COL </dev/tty
         [ -n "$ADMIN_PASS_COL" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
-
     while true; do
-        read -p "Admin Email/Username: " ADMIN_EMAIL </dev/tty
+        read -p "  Admin Email/Username: " ADMIN_EMAIL </dev/tty
         [ -n "$ADMIN_EMAIL" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
-
     while true; do
-        read -s -p "Admin Password: " ADMIN_PASS </dev/tty
+        read -s -p "  Admin Password: " ADMIN_PASS </dev/tty
         echo
         [ -n "$ADMIN_PASS" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
 
     if [ "$IS_LARAVEL" = true ]; then
         HASH_TYPE="bcrypt"
     else
         echo ""
-        echo "Password Hash Type:"
-        echo "  1. bcrypt (recommended)"
-        echo "  2. md5"
-        echo "  3. plain (no hash)"
+        echo -e "  ${BG}Password Hash:${NC}"
+        echo -e "  ${BG}1${NC}. bcrypt (recommended)"
+        echo -e "  ${BG}2${NC}. md5"
+        echo -e "  ${BG}3${NC}. plain (no hash)"
         echo ""
-        read -p "Choose [1/2/3]: " HASH_CHOICE </dev/tty
+        read -p "  Choose [1/2/3]: " HASH_CHOICE </dev/tty
         case "$HASH_CHOICE" in
             1) HASH_TYPE="bcrypt" ;;
             2) HASH_TYPE="md5" ;;
@@ -239,48 +251,36 @@ if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
     mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
         -e "INSERT INTO \`$ADMIN_TABLE\` (\`$ADMIN_USER_COL\`, \`$ADMIN_PASS_COL\`) VALUES ('$ADMIN_EMAIL', '$HASHED_PASS');" \
         || error_exit "Failed to create admin account"
-
-    echo "Admin account created!"
+    print_ok "Admin account created!"
 fi
 
-# --- step 7: ssl ---
-
 echo ""
-echo "[7/7] SSL Setup"
-echo ""
-
+print_line
+echo -e "  ${C}[7/7] SSL Setup${NC}"
+print_line
 if [ "$USE_SSL" = true ]; then
     apt install -y certbot python3-certbot-apache || true
     certbot --apache -d "$DOMAIN" --agree-tos --non-interactive -m admin@$DOMAIN || true
 else
-    echo "Skipped (IP mode)"
+    echo -e "  ${DG}Skipped (IP mode)${NC}"
 fi
-
-# --- done ---
 
 IP=$(hostname -I | awk '{print $1}')
 
 echo ""
-echo "============================================="
-echo "  PROJECT ADDED"
-echo "============================================="
-echo ""
-echo "  Project  : $PROJECT"
-echo "  Location : $WEB"
-echo "  Database : $DB_NAME"
-echo ""
-
+echo -e "  ${BG}╔═════════════════════════════════════╗${NC}"
+echo -e "  ${BG}║  ✓ PROJECT ADDED                   ║${NC}"
+echo -e "  ${BG}╠═════════════════════════════════════╣${NC}"
+echo -e "  ${BG}║${NC}  Project  : $PROJECT"
+echo -e "  ${BG}║${NC}  Location : $WEB"
+echo -e "  ${BG}║${NC}  Database : $DB_NAME"
 if [ "$USE_SSL" = true ]; then
-    echo "  URL      : https://$DOMAIN"
+    echo -e "  ${BG}║${NC}  URL      : https://$DOMAIN"
 else
-    echo "  URL      : http://$IP"
+    echo -e "  ${BG}║${NC}  URL      : http://$IP"
 fi
-
 if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
-    echo "  Admin    : $ADMIN_EMAIL"
+    echo -e "  ${BG}║${NC}  Admin    : $ADMIN_EMAIL"
 fi
-
+echo -e "  ${BG}╚═════════════════════════════════════╝${NC}"
 echo ""
-echo "============================================="
-echo "  Deploy by Mizyal"
-echo "============================================="

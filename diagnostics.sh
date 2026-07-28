@@ -1,247 +1,290 @@
 #!/bin/bash
 
-set -Eeuo pipefail
-
 VERSION="2.0"
-MODE="${1:---status}"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+G='\033[0;32m'
+BG='\033[1;32m'
+DG='\033[2;32m'
+LG='\033[92m'
+Y='\033[1;33m'
+R='\033[0;31m'
+C='\033[0;36m'
 NC='\033[0m'
 
-ok()   { echo -e "  ${GREEN}[OK]${NC}    $1"; }
-warn() { echo -e "  ${YELLOW}[WARN]${NC}  $1"; }
-fail() { echo -e "  ${RED}[FAIL]${NC}  $1"; }
-info() { echo -e "  [INFO]   $1"; }
-
-section() {
-    echo ""
-    echo -e "${BLUE}--- $1 ---${NC}"
-    echo ""
+print_logo() {
+    echo -e "${BG}"
+    echo "(           (    (        )      )             )     *     (        )      )          (     "
+    echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
+    echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
+    echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
+    echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
+    echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
+    echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
+    echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    echo -e "${NC}"
 }
 
-if [ "$EUID" -ne 0 ]; then
-    echo "Run as root"
-    exit 1
-fi
+print_line() { echo -e "${DG}─────────────────────────────────────────${NC}"; }
+print_ok()   { echo -e "  ${BG}[OK]${NC}    $1"; }
+print_warn() { echo -e "  ${Y}[WARN]${NC}  $1"; }
+print_fail() { echo -e "  ${R}[FAIL]${NC}  $1"; }
+print_info() { echo -e "  ${C}→${NC}  $1"; }
+
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "?")
 
 clear
-echo "=========================================="
-echo "  DEPLOY BY MIZYAL - Diagnostics v$VERSION"
-echo "=========================================="
+print_logo
+print_line
+echo -e "  ${C}DIAGNOSTICS  v$VERSION${NC}"
+print_line
+echo ""
 
-IP=$(hostname -I | awk '{print $1}')
-info "Server IP : $IP"
-info "Date      : $(date)"
-info "Mode      : $MODE"
-
-# --- services ---
-
-section "Services Status"
-
-if systemctl is-active --quiet apache2 2>/dev/null; then ok "Apache2"; else fail "Apache2 is down"; fi
-if systemctl is-active --quiet mysql 2>/dev/null; then ok "MySQL"; else fail "MySQL is down"; fi
-
-PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "")
-if [ -n "$PHP_VER" ] && systemctl is-active --quiet "php${PHP_VER}-fpm" 2>/dev/null; then
-    ok "PHP ${PHP_VER}-FPM"
-elif [ -n "$PHP_VER" ]; then
-    fail "PHP ${PHP_VER}-FPM is down"
-else
-    fail "PHP not installed"
+# Mode detection
+if [ "$EUID" -ne 0 ]; then
+    print_warn "Not root, some checks skipped"
 fi
 
-if systemctl is-active --quiet fail2ban 2>/dev/null; then ok "fail2ban"; else warn "fail2ban is down"; fi
-if systemctl is-active --quiet cron 2>/dev/null; then ok "Cron"; else warn "Cron is down"; fi
-if ufw status | grep -q "active"; then ok "UFW firewall"; else warn "UFW is inactive"; fi
+MODE=""
+for arg in "$@"; do
+    case "$arg" in
+        --status) MODE="status" ;;
+        --full)   MODE="full" ;;
+    esac
+done
 
-# --- projects ---
-
-section "Projects"
-
-if [ -d "/var/www" ]; then
-    PROJECTS=$(ls -1 /var/www 2>/dev/null || true)
-    if [ -n "$PROJECTS" ]; then
-        printf "  %-25s %-12s %s\n" "NAME" "FRAMEWORK" "STATUS"
-        printf "  %-25s %-12s %s\n" "----" "---------" "------"
-
-        while IFS= read -r P; do
-            FW="Unknown"
-            ST="Unknown"
-
-            [ -f "/var/www/$P/artisan" ] && FW="Laravel"
-            [ -f "/var/www/$P/composer.json" ] && FW="Composer"
-            [ "$FW" = "Unknown" ] && FW="PHP Native"
-
-            if [ -f "/etc/apache2/sites-available/$P.conf" ]; then
-                if a2query -s -d "$P" 2>/dev/null | grep -q "enabled"; then
-                    ST="${GREEN}Active${NC}"
-                else
-                    ST="${YELLOW}Disabled${NC}"
-                fi
-            else
-                ST="${RED}No Config${NC}"
-            fi
-
-            printf "  %-25s %-12s %b\n" "$P" "$FW" "$ST"
-        done <<< "$PROJECTS"
-    else
-        warn "No projects in /var/www"
-    fi
-else
-    warn "/var/www does not exist"
-fi
-
-# --- disk ---
-
-section "Disk Usage"
-
-df -h / | tail -1 | awk '{printf "  Total: %s | Used: %s (%s) | Free: %s\n", $2, $3, $5, $4}'
-
-if [ -d "/var/www" ]; then
+if [ -z "$MODE" ]; then
+    echo -e "  ${BG}Select mode:${NC}"
+    echo -e "  ${BG}1${NC}. Quick Status"
+    echo -e "  ${BG}2${NC}. Full Diagnostics"
     echo ""
-    echo "  Project sizes:"
-    du -sh /var/www/* 2>/dev/null | sort -rh | head -10 | while read -r SIZE DIR; do
-        printf "    %-25s %s\n" "$(basename "$DIR")" "$SIZE"
-    done
+    read -p "  Choose [1/2]: " CHOICE </dev/tty
+    case "$CHOICE" in
+        1) MODE="status" ;;
+        2) MODE="full" ;;
+        *) MODE="status" ;;
+    esac
 fi
 
-# --- full mode ---
-
-if [ "$MODE" = "--full" ]; then
-
-    # apache errors
-
-    section "Apache Errors"
-
+check_apache() {
+    echo ""
+    print_line
+    echo -e "  ${C}Apache2${NC}"
+    print_line
+    if systemctl is-active --quiet apache2; then
+        print_ok "Running"
+    else
+        print_fail "Not running"
+    fi
     if apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
-        ok "Config syntax OK"
+        print_ok "Config syntax OK"
     else
-        fail "Config syntax error"
-        apache2ctl configtest 2>&1 | head -5
+        print_fail "Config has errors"
     fi
+}
 
-    if [ -f "/var/log/apache2/error.log" ]; then
-        ERRORS=$(tail -100 /var/log/apache2/error.log 2>/dev/null | grep -c "\[error\]" || echo "0")
-        if [ "$ERRORS" -gt 0 ]; then
-            warn "$ERRORS errors in last 100 lines"
-            echo ""
-            tail -5 /var/log/apache2/error.log
-        else
-            ok "Error log clean"
-        fi
-    fi
-
-    # php errors
-
-    section "PHP"
-
-    if [ -n "$PHP_VER" ]; then
-        if systemctl is-active --quiet "php${PHP_VER}-fpm" 2>/dev/null; then
-            ok "PHP ${PHP_VER}-FPM running"
-        else
-            fail "PHP ${PHP_VER}-FPM down"
-        fi
-
-        PHP_LOG="/var/log/php${PHP_VER}-fpm.log"
-        if [ -f "$PHP_LOG" ]; then
-            PHP_ERR=$(tail -50 "$PHP_LOG" 2>/dev/null | grep -c -i "error\|fatal\|warning" || echo "0")
-            if [ "$PHP_ERR" -gt 0 ]; then
-                warn "$PHP_ERR issues in PHP log"
-                tail -5 "$PHP_LOG"
-            else
-                ok "PHP log clean"
-            fi
-        fi
-
-        echo ""
-        echo "  PHP Config:"
-        echo "    Memory Limit  : $(php -r 'echo ini_get("memory_limit");' 2>/dev/null || echo "?")"
-        echo "    Upload Max    : $(php -r 'echo ini_get("upload_max_filesize");' 2>/dev/null || echo "?")"
-        echo "    Post Max      : $(php -r 'echo ini_get("post_max_size");' 2>/dev/null || echo "?")"
-        echo "    Exec Time     : $(php -r 'echo ini_get("max_execution_time");' 2>/dev/null || echo "?")s"
-    fi
-
-    # mysql
-
-    section "MySQL"
-
-    if systemctl is-active --quiet mysql 2>/dev/null; then
-        ok "MySQL running"
-        echo ""
-        echo "  Databases:"
-        mysql -u root -N -e "SELECT table_schema, ROUND(SUM(data_length+index_length)/1024/1024,2) FROM information_schema.tables GROUP BY table_schema;" 2>/dev/null | while read -r DB SIZE; do
-            printf "    %-25s %s MB\n" "$DB" "$SIZE"
-        done
-        echo ""
-        CONN=$(mysql -u root -N -e "SELECT COUNT(*) FROM information_schema.processlist;" 2>/dev/null || echo "?")
-        info "Active connections: $CONN"
+check_php() {
+    echo ""
+    print_line
+    echo -e "  ${C}PHP${NC}"
+    print_line
+    if command -v php >/dev/null; then
+        print_ok "PHP $PHP_VERSION"
     else
-        fail "MySQL is down"
+        print_fail "PHP not found"
+        return
     fi
+    if systemctl is-active --quiet php${PHP_VERSION}-fpm; then
+        print_ok "PHP-FPM running"
+    else
+        print_fail "PHP-FPM not running"
+    fi
+}
 
-    # ssl
+check_mysql() {
+    echo ""
+    print_line
+    echo -e "  ${C}MySQL${NC}"
+    print_line
+    if systemctl is-active --quiet mysql; then
+        print_ok "Running"
+    else
+        print_fail "Not running"
+    fi
+    DB_COUNT=$(mysql -u root -N -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name NOT IN ('mysql','information_schema','performance_schema','sys');" 2>/dev/null || echo "?")
+    print_info "Databases: $DB_COUNT"
+}
 
-    section "SSL Certificates"
+check_projects() {
+    echo ""
+    print_line
+    echo -e "  ${C}Projects${NC}"
+    print_line
+    FOUND=0
+    for CONF in /etc/apache2/sites-available/*.conf; do
+        [ -f "$CONF" ] || continue
+        SITE=$(basename "$CONF" .conf)
+        [ "$SITE" = "000-default" ] && continue
+        ROOT=$(grep "DocumentRoot" "$CONF" | awk '{print $2}')
+        FOUND=1
+        if [ -d "$ROOT" ]; then
+            echo -e "  ${BG}[OK]${NC}    $SITE  ${DG}→${NC}  $ROOT"
+        else
+            echo -e "  ${R}[WARN]${NC}  $SITE  ${DG}→${NC}  $ROOT ${R}(dir missing)${NC}"
+        fi
+    done
+    [ "$FOUND" -eq 0 ] && echo -e "  ${DG}No projects found${NC}"
+}
 
-    if command -v certbot >/dev/null 2>/dev/null; then
-        CERTS=$(certbot certificates 2>/dev/null | grep "Domains:" | awk '{print $2}' || true)
-        if [ -n "$CERTS" ]; then
-            for DOM in $CERTS; do
-                EXPIRY=$(echo | openssl s_client -servername "$DOM" -connect "$DOM":443 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || echo "")
-                if [ -n "$EXPIRY" ]; then
-                    EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null || echo 0)
-                    NOW=$(date +%s)
-                    DAYS=$(( (EPOCH - NOW) / 86400 ))
-                    if [ "$DAYS" -lt 0 ]; then
-                        fail "$DOM: EXPIRED"
-                    elif [ "$DAYS" -lt 30 ]; then
-                        warn "$DOM: expires in $DAYS days"
-                    else
-                        ok "$DOM: expires in $DAYS days"
-                    fi
-                else
-                    warn "$DOM: cannot check"
-                fi
+check_disk() {
+    echo ""
+    print_line
+    echo -e "  ${C}Disk Usage${NC}"
+    print_line
+    DISK_PCT=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
+    if [ "$DISK_PCT" -ge 90 ]; then
+        print_fail "Root disk: ${DISK_PCT}%"
+    elif [ "$DISK_PCT" -ge 80 ]; then
+        print_warn "Root disk: ${DISK_PCT}%"
+    else
+        print_ok "Root disk: ${DISK_PCT}%"
+    fi
+}
+
+check_apache_errors() {
+    echo ""
+    print_line
+    echo -e "  ${C}Recent Apache Errors${NC}"
+    print_line
+    ERR_LOG="/var/log/apache2/error.log"
+    if [ -f "$ERR_LOG" ]; then
+        COUNT=$(tail -100 "$ERR_LOG" 2>/dev/null | grep -c "error\|crit\|alert\|emerg" || echo "0")
+        if [ "$COUNT" -gt 20 ]; then
+            print_fail "$COUNT errors in last 100 lines"
+            echo -e "  ${DG}── Last 5 ──${NC}"
+            tail -100 "$ERR_LOG" | grep -i "error\|crit\|alert\|emerg" | tail -5 | while IFS= read -r LINE; do
+                echo -e "  ${R}$LINE${NC}"
             done
+        elif [ "$COUNT" -gt 0 ]; then
+            print_warn "$COUNT errors in last 100 lines"
         else
-            info "No certificates found"
+            print_ok "No recent errors"
         fi
     else
-        info "Certbot not installed"
+        echo -e "  ${DG}Error log not found${NC}"
     fi
+}
 
-    # firewall
-
-    section "Firewall"
-
-    if ufw status | grep -q "active"; then
-        ok "UFW active"
-        echo ""
-        ufw status numbered 2>/dev/null | grep "\[" | while read -r LINE; do
-            echo "    $LINE"
-        done
+check_php_errors() {
+    echo ""
+    print_line
+    echo -e "  ${C}PHP Errors${NC}"
+    print_line
+    PHP_LOG="/var/log/php${PHP_VERSION}-fpm.log"
+    if [ -f "$PHP_LOG" ]; then
+        COUNT=$(tail -50 "$PHP_LOG" 2>/dev/null | grep -c "error\|crit\|alert\|emerg" || echo "0")
+        if [ "$COUNT" -gt 0 ]; then
+            print_warn "$COUNT errors in PHP-FPM log"
+        else
+            print_ok "No recent PHP-FPM errors"
+        fi
     else
-        warn "UFW inactive"
+        echo -e "  ${DG}PHP-FPM log not found${NC}"
     fi
+}
 
-fi
+check_mysql_errors() {
+    echo ""
+    print_line
+    echo -e "  ${C}MySQL Errors${NC}"
+    print_line
+    MYSQL_LOG=$(ls /var/log/mysql/error.log 2>/dev/null || ls /var/log/mysql/error.err 2>/dev/null || echo "")
+    if [ -n "$MYSQL_LOG" ]; then
+        COUNT=$(tail -50 "$MYSQL_LOG" 2>/dev/null | grep -ic "error\|warning\|fatal" || echo "0")
+        if [ "$COUNT" -gt 0 ]; then
+            print_warn "$COUNT errors in MySQL log"
+        else
+            print_ok "No recent MySQL errors"
+        fi
+    else
+        echo -e "  ${DG}MySQL error log not found${NC}"
+    fi
+}
 
-# --- summary ---
+check_ssl_expiry() {
+    echo ""
+    print_line
+    echo -e "  ${C}SSL Certificates${NC}"
+    print_line
+    FOUND=0
+    for CONF in /etc/apache2/sites-available/*.conf; do
+        [ -f "$CONF" ] || continue
+        SITE=$(basename "$CONF" .conf)
+        [ "$SITE" = "000-default" ] && continue
+        DOMAIN=$(grep "ServerName" "$CONF" | awk '{print $2}' | head -1)
+        [ -z "$DOMAIN" ] || [ "$DOMAIN" = "_" ] && continue
 
-ISSUES=0
-systemctl is-active --quiet apache2 2>/dev/null || ISSUES=$((ISSUES + 1))
-systemctl is-active --quiet mysql 2>/dev/null || ISSUES=$((ISSUES + 1))
-[ -n "$PHP_VER" ] && ! systemctl is-active --quiet "php${PHP_VER}-fpm" 2>/dev/null && ISSUES=$((ISSUES + 1))
+        CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+        if [ -f "$CERT" ]; then
+            EXPIRY=$(openssl x509 -enddate -noout -in "$CERT" 2>/dev/null | cut -d= -f2)
+            EXPIRY_EPOCH=$(date -j -f "%b %d %T %Y %Z" "$EXPIRY" +%s 2>/dev/null || echo "0")
+            NOW_EPOCH=$(date +%s)
+            DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+
+            if [ "$DAYS_LEFT" -le 7 ]; then
+                echo -e "  ${R}[EXPIRED/EXPIRING]${NC}  $DOMAIN  ${DG}→${NC}  $DAYS_LEFT days left"
+            elif [ "$DAYS_LEFT" -le 30 ]; then
+                echo -e "  ${Y}[WARNING]${NC}         $DOMAIN  ${DG}→${NC}  $DAYS_LEFT days left"
+            else
+                echo -e "  ${BG}[OK]${NC}              $DOMAIN  ${DG}→${NC}  $DAYS_LEFT days left"
+            fi
+            FOUND=1
+        fi
+    done
+    [ "$FOUND" -eq 0 ] && echo -e "  ${DG}No SSL certificates found${NC}"
+}
+
+check_firewall() {
+    echo ""
+    print_line
+    echo -e "  ${C}Firewall${NC}"
+    print_line
+    if command -v ufw >/dev/null; then
+        STATUS=$(ufw status 2>/dev/null | head -1)
+        if echo "$STATUS" | grep -q "active"; then
+            print_ok "UFW active"
+            RULES=$(ufw status numbered 2>/dev/null | grep "\[" | wc -l | tr -d ' ')
+            echo -e "  ${DG}→${NC}  Rules: $RULES"
+        else
+            print_fail "UFW inactive"
+        fi
+    else
+        echo -e "  ${DG}UFW not installed${NC}"
+    fi
+}
+
+# Run based on mode
+case "$MODE" in
+    status)
+        check_apache
+        check_php
+        check_mysql
+        ;;
+    full)
+        check_apache
+        check_php
+        check_mysql
+        check_projects
+        check_disk
+        check_apache_errors
+        check_php_errors
+        check_mysql_errors
+        check_ssl_expiry
+        check_firewall
+        ;;
+esac
 
 echo ""
-echo "=========================================="
-if [ "$ISSUES" -eq 0 ]; then
-    echo -e "  ${GREEN}All services OK. Server is healthy.${NC}"
-else
-    echo -e "  ${RED}Found $ISSUES issue(s).${NC}"
-fi
-echo "=========================================="
+print_line
+echo -e "  ${C}Diagnostics complete${NC}"
+print_line
 echo ""

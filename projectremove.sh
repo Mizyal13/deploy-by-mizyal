@@ -4,9 +4,36 @@ set -Eeuo pipefail
 
 VERSION="2.0"
 
+G='\033[0;32m'
+BG='\033[1;32m'
+DG='\033[2;32m'
+LG='\033[92m'
+Y='\033[1;33m'
+R='\033[0;31m'
+C='\033[0;36m'
+NC='\033[0m'
+
+print_logo() {
+    echo -e "${BG}"
+    echo "(           (    (        )      )             )     *     (        )      )          (     "
+    echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
+    echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
+    echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
+    echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
+    echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
+    echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
+    echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    echo -e "${NC}"
+}
+
+print_line() { echo -e "${DG}─────────────────────────────────────────${NC}"; }
+
 error_exit() {
     echo ""
-    echo "ERROR: $1"
+    echo -e "  ${R}╔═════════════════════════════════════╗${NC}"
+    echo -e "  ${R}║  ✗ ERROR                           ║${NC}"
+    echo -e "  ${R}║  $1${NC}"
+    echo -e "  ${R}╚═════════════════════════════════════╝${NC}"
     echo ""
     exit 1
 }
@@ -16,16 +43,16 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 clear
-echo "====================================="
-echo "  DEPLOY BY MIZYAL"
-echo "  Remove Project"
-echo "====================================="
+print_logo
+print_line
+echo -e "  ${C}REMOVE PROJECT  v$VERSION${NC}"
+print_line
 echo ""
 
 while true; do
-    read -p "Project Name: " PROJECT </dev/tty
+    read -p "  Project Name: " PROJECT </dev/tty
     [ -n "$PROJECT" ] && break
-    echo "Cannot be empty"
+    echo -e "  ${R}Cannot be empty${NC}"
 done
 
 WEB="/var/www/$PROJECT"
@@ -36,58 +63,53 @@ if [ ! -d "$WEB" ] && [ ! -f "$CONF" ]; then
 fi
 
 echo ""
-echo "This will remove:"
-echo "  Project : $PROJECT"
-echo "  Files   : $WEB"
-echo "  Config  : $CONF"
+echo -e "  ${Y}This will remove:${NC}"
+echo -e "  Project : $PROJECT"
+echo -e "  Files   : $WEB"
+echo -e "  Config  : $CONF"
 echo ""
-read -p "Continue? [y/n]: " CONFIRM </dev/tty
+read -p "  Continue? [y/n]: " CONFIRM </dev/tty
 
 if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
-    echo "Cancelled"
+    echo -e "  ${DG}Cancelled${NC}"
     exit 0
 fi
 
-# --- step 1: remove apache config ---
-
 echo ""
-echo "[1/3] Removing Apache config"
-echo ""
+print_line
+echo -e "  ${C}[1/3] Removing Apache config${NC}"
+print_line
 a2dissite "$PROJECT.conf" || true
 rm -f "$CONF"
 systemctl reload apache2 || true
 
-# --- step 2: remove files ---
-
 echo ""
-echo "[2/3] Removing project files"
-echo ""
-
+print_line
+echo -e "  ${C}[2/3] Removing project files${NC}"
+print_line
 if [ -d "$WEB" ]; then
     rm -rf "$WEB"
-    echo "Removed: $WEB"
+    echo -e "  ${BG}→${NC} Removed: $WEB"
 else
-    echo "Not found: $WEB"
+    echo -e "  ${Y}→ Not found: $WEB${NC}"
 fi
 
-# --- step 3: remove database ---
-
 echo ""
-echo "[3/3] Database cleanup"
-echo ""
-read -p "Remove database? [y/n]: " REMOVE_DB </dev/tty
+print_line
+echo -e "  ${C}[3/3] Database cleanup${NC}"
+print_line
+read -p "  Remove database? [y/n]: " REMOVE_DB </dev/tty
 
 if [ "$REMOVE_DB" = "y" ] || [ "$REMOVE_DB" = "Y" ]; then
     while true; do
-        read -p "Database Name: " DB_NAME </dev/tty
+        read -p "  Database Name: " DB_NAME </dev/tty
         [ -n "$DB_NAME" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
-
     while true; do
-        read -p "Database User: " DB_USER </dev/tty
+        read -p "  Database User: " DB_USER </dev/tty
         [ -n "$DB_USER" ] && break
-        echo "Cannot be empty"
+        echo -e "  ${R}Cannot be empty${NC}"
     done
 
     mysql -u root <<SQL
@@ -96,18 +118,14 @@ DROP USER IF EXISTS '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 
-    echo "Database '$DB_NAME' and user '$DB_USER' removed"
+    echo -e "  ${BG}→${NC} Database '$DB_NAME' and user '$DB_USER' removed"
 else
-    echo "Skipped"
+    echo -e "  ${DG}→ Skipped${NC}"
 fi
 
 echo ""
-echo "============================================="
-echo "  PROJECT REMOVED"
-echo "============================================="
+echo -e "  ${BG}╔═════════════════════════════════════╗${NC}"
+echo -e "  ${BG}║  ✓ PROJECT REMOVED                 ║${NC}"
+echo -e "  ${BG}║  Project: $PROJECT${NC}"
+echo -e "  ${BG}╚═════════════════════════════════════╝${NC}"
 echo ""
-echo "  Project: $PROJECT"
-echo ""
-echo "============================================="
-echo "  Deploy by Mizyal"
-echo "============================================="
