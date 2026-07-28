@@ -107,7 +107,7 @@ while true
 do
 read -p "
 Project Name:
-> " PROJECT
+> " PROJECT </dev/tty
 [ -n "$PROJECT" ] && break
 echo "Project name cannot be empty"
 done
@@ -117,7 +117,7 @@ while true
 do
 read -p "
 Git Repository:
-> " REPO
+> " REPO </dev/tty
 [ -n "$REPO" ] && break
 echo "Repository URL cannot be empty"
 done
@@ -125,7 +125,7 @@ done
 
 read -p "
 Branch(default main):
-> " BRANCH
+> " BRANCH </dev/tty
 
 
 BRANCH=${BRANCH:-main}
@@ -145,7 +145,7 @@ Deployment Type:
 
 
 read -p "Choose:
-> " MODE
+> " MODE </dev/tty
 
 
 
@@ -156,7 +156,7 @@ while true
 do
 read -p "
 Domain:
-> " DOMAIN
+> " DOMAIN </dev/tty
 [ -n "$DOMAIN" ] && break
 echo "Domain cannot be empty"
 done
@@ -188,7 +188,7 @@ while true
 do
 read -p "
 Database Name:
-> " DB_NAME
+> " DB_NAME </dev/tty
 [ -n "$DB_NAME" ] && break
 echo "Database name cannot be empty"
 done
@@ -198,7 +198,7 @@ while true
 do
 read -p "
 Database User:
-> " DB_USER
+> " DB_USER </dev/tty
 [ -n "$DB_USER" ] && break
 echo "Database user cannot be empty"
 done
@@ -208,7 +208,7 @@ while true
 do
 read -s -p "
 Database Password:
-> " DB_PASS
+> " DB_PASS </dev/tty
 echo
 [ -n "$DB_PASS" ] && break
 echo "Database password cannot be empty"
