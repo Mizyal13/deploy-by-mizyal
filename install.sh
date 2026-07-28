@@ -14,31 +14,15 @@ C='\033[0;36m'
 NC='\033[0m'
 
 print_logo() {
-    local COLUMNS
-    COLUMNS=$(tput cols 2>/dev/null || echo 80)
     echo -e "${BG}"
-    if [ "$COLUMNS" -ge 90 ]; then
-        echo "(           (    (        )      )             )     *     (        )      )          (     "
-        echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
-        echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
-        echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
-        echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
-        echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
-        echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
-        echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
-    else
-        echo "  ____  _     ___ _   _ __  __ "
-        echo " |  _ \\| |   |_ _| \\ | |  \\/  |"
-        echo " | |_) | |    | ||  \\| | |\\/| |"
-        echo " |  __/| |___ | || |\\  | |  | |"
-        echo " |_|   |_____|___|_| \\_|_|  |_|"
-        echo ""
-        echo "  __  __                 "
-        echo " |  \\/  | ___ _ __  ___ "
-        echo " | |\\/| |/ _ \\ '_ \\/ __|"
-        echo " | |  | |  __/ | | \\__ \\\\"
-        echo " |_|  |_|\\___|_| |_|___/"
-    fi
+    echo "(           (    (        )      )             )     *     (        )      )          (     "
+    echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
+    echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
+    echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
+    echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
+    echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
+    echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
+    echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
     echo -e "${NC}"
 }
 
@@ -269,21 +253,6 @@ print_line
 echo -e "  ${C}[12/14] Database migration${NC}"
 print_line
 
-run_sql_files() {
-    local dir="$1"
-    local count=0
-    for SQL_FILE in "$dir"/*.sql; do
-        [ -f "$SQL_FILE" ] || continue
-        echo -e "  ${C}→${NC} Importing: $(basename "$SQL_FILE")"
-        mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$SQL_FILE" || {
-            print_warn "Failed to import $(basename "$SQL_FILE"), skipping"
-            continue
-        }
-        count=$((count + 1))
-    done
-    return $count
-}
-
 if [ "$IS_LARAVEL" = true ]; then
     echo -e "  ${C}→${NC} Running artisan migrate..."
     php artisan migrate --force || {
@@ -296,16 +265,22 @@ if [ "$IS_LARAVEL" = true ]; then
 fi
 
 if [ "$IS_LARAVEL" = false ]; then
-    SQL_COUNT=0
+    IMPORTED_COUNT=0
     for DIR in "$WEB" "$WEB/database" "$WEB/sql" "$WEB/db" "$WEB/storage"; do
         if [ -d "$DIR" ]; then
-            run_sql_files "$DIR" || true
-            FOUND=$?
-            SQL_COUNT=$((SQL_COUNT + FOUND))
+            for SQL_FILE in "$DIR"/*.sql; do
+                [ -f "$SQL_FILE" ] || continue
+                echo -e "  ${C}→${NC} Importing: $(basename "$SQL_FILE")"
+                mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$SQL_FILE" || {
+                    print_warn "Failed to import $(basename "$SQL_FILE"), skipping"
+                    continue
+                }
+                IMPORTED_COUNT=$((IMPORTED_COUNT + 1))
+            done
         fi
     done
 
-    if [ "$SQL_COUNT" -eq 0 ]; then
+    if [ "$IMPORTED_COUNT" -eq 0 ]; then
         echo -e "  ${Y}No .sql files found${NC}"
         read -p "  Import .sql file manually? (enter path or leave empty): " MANUAL_SQL </dev/tty
         if [ -n "$MANUAL_SQL" ]; then
@@ -316,7 +291,7 @@ if [ "$IS_LARAVEL" = false ]; then
             print_warn "Skipped. Make sure DB is ready before creating admin."
         fi
     else
-        print_ok "Imported $SQL_COUNT SQL file(s)"
+        print_ok "Imported $IMPORTED_COUNT SQL file(s)"
     fi
 fi
 
@@ -338,14 +313,20 @@ if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
         || error_exit "Table '$ADMIN_TABLE' does not exist. Check your .sql file or migration."
 
     while true; do
-        read -p "  Username/Email Column: " ADMIN_USER_COL </dev/tty
-        [ -n "$ADMIN_USER_COL" ] && break
-        echo -e "  ${R}Cannot be empty${NC}"
-    done
-    while true; do
-        read -p "  Password Column: " ADMIN_PASS_COL </dev/tty
-        [ -n "$ADMIN_PASS_COL" ] && break
-        echo -e "  ${R}Cannot be empty${NC}"
+        while true; do
+            read -p "  Username/Email Column: " ADMIN_USER_COL </dev/tty
+            [ -n "$ADMIN_USER_COL" ] && break
+            echo -e "  ${R}Cannot be empty${NC}"
+        done
+        while true; do
+            read -p "  Password Column: " ADMIN_PASS_COL </dev/tty
+            [ -n "$ADMIN_PASS_COL" ] && break
+            echo -e "  ${R}Cannot be empty${NC}"
+        done
+        if [ "$ADMIN_USER_COL" != "$ADMIN_PASS_COL" ]; then
+            break
+        fi
+        echo -e "  ${R}Username and Password column cannot be the same${NC}"
     done
     while true; do
         read -p "  Admin Email/Username: " ADMIN_EMAIL </dev/tty
