@@ -14,15 +14,31 @@ C='\033[0;36m'
 NC='\033[0m'
 
 print_logo() {
+    local COLUMNS
+    COLUMNS=$(tput cols 2>/dev/null || echo 80)
     echo -e "${BG}"
-    echo "(           (    (        )      )             )     *     (        )      )          (     "
-    echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
-    echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
-    echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
-    echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
-    echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
-    echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
-    echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    if [ "$COLUMNS" -ge 90 ]; then
+        echo "(           (    (        )      )             )     *     (        )      )          (     "
+        echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
+        echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
+        echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
+        echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
+        echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
+        echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
+        echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    else
+        echo "  ____  _     ___ _   _ __  __ "
+        echo " |  _ \\| |   |_ _| \\ | |  \\/  |"
+        echo " | |_) | |    | ||  \\| | |\\/| |"
+        echo " |  __/| |___ | || |\\  | |  | |"
+        echo " |_|   |_____|___|_| \\_|_|  |_|"
+        echo ""
+        echo "  __  __                 "
+        echo " |  \\/  | ___ _ __  ___ "
+        echo " | |\\/| |/ _ \\ '_ \\/ __|"
+        echo " | |  | |  __/ | | \\__ \\\\"
+        echo " |_|  |_|\\___|_| |_|___/"
+    fi
     echo -e "${NC}"
 }
 
@@ -122,14 +138,14 @@ WEB="/var/www/$PROJECT"
 
 echo ""
 print_line
-echo -e "  ${C}[1/13] Updating system${NC}"
+echo -e "  ${C}[1/14] Updating system${NC}"
 print_line
 apt update -y || error_exit "apt update failed"
 apt upgrade -y || true
 
 echo ""
 print_line
-echo -e "  ${C}[2/13] Installing base packages${NC}"
+echo -e "  ${C}[2/14] Installing base packages${NC}"
 print_line
 apt install -y \
     software-properties-common apt-transport-https ca-certificates \
@@ -138,7 +154,7 @@ apt install -y \
 
 echo ""
 print_line
-echo -e "  ${C}[3/13] Installing Apache${NC}"
+echo -e "  ${C}[3/14] Installing Apache${NC}"
 print_line
 apt install -y apache2 || error_exit "Apache install failed"
 command -v apache2 || error_exit "Apache not found"
@@ -146,7 +162,7 @@ systemctl enable apache2
 
 echo ""
 print_line
-echo -e "  ${C}[4/13] Installing PHP${NC}"
+echo -e "  ${C}[4/14] Installing PHP${NC}"
 print_line
 apt install -y \
     php php-cli php-common php-fpm php-mysql php-curl \
@@ -158,7 +174,7 @@ systemctl enable php${PHP_VERSION}-fpm || true
 
 echo ""
 print_line
-echo -e "  ${C}[5/13] Installing MySQL${NC}"
+echo -e "  ${C}[5/14] Installing MySQL${NC}"
 print_line
 apt install -y mysql-server || error_exit "MySQL install failed"
 systemctl enable mysql
@@ -166,7 +182,7 @@ systemctl start mysql
 
 echo ""
 print_line
-echo -e "  ${C}[6/13] Installing Composer${NC}"
+echo -e "  ${C}[6/14] Installing Composer${NC}"
 print_line
 if ! command -v composer >/dev/null; then
     php -r "copy('https://getcomposer.org/installer','composer-setup.php');"
@@ -176,7 +192,7 @@ fi
 
 echo ""
 print_line
-echo -e "  ${C}[7/13] Downloading project${NC}"
+echo -e "  ${C}[7/14] Downloading project${NC}"
 print_line
 mkdir -p /var/www
 [ -d "$WEB" ] && rm -rf "$WEB"
@@ -184,7 +200,7 @@ git clone --branch "$BRANCH" "$REPO" "$WEB" || error_exit "Git clone failed"
 
 echo ""
 print_line
-echo -e "  ${C}[8/13] Creating database${NC}"
+echo -e "  ${C}[8/14] Creating database${NC}"
 print_line
 mysql -u root <<SQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
@@ -195,10 +211,9 @@ SQL
 
 echo ""
 print_line
-echo -e "  ${C}[9/13] Configuring Apache${NC}"
+echo -e "  ${C}[9/14] Configuring Apache${NC}"
 print_line
 a2enmod rewrite proxy_fcgi setenvif
-
 cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
 <VirtualHost *:80>
     ServerName $DOMAIN
@@ -217,14 +232,13 @@ cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
     CustomLog \${APACHE_LOG_DIR}/$PROJECT-access.log combined
 </VirtualHost>
 EOF
-
 a2dissite 000-default.conf || true
 a2ensite $PROJECT.conf
 systemctl reload apache2
 
 echo ""
 print_line
-echo -e "  ${C}[10/13] Setting permissions${NC}"
+echo -e "  ${C}[10/14] Setting permissions${NC}"
 print_line
 chown -R www-data:www-data "$WEB"
 find "$WEB" -type d -exec chmod 755 {} \;
@@ -232,10 +246,12 @@ find "$WEB" -type f -exec chmod 644 {} \;
 
 echo ""
 print_line
-echo -e "  ${C}[11/13] Detecting framework${NC}"
+echo -e "  ${C}[11/14] Detecting framework${NC}"
 print_line
 cd "$WEB"
+IS_LARAVEL=false
 if [ -f artisan ]; then
+    IS_LARAVEL=true
     print_ok "Laravel detected"
     composer install --no-dev --optimize-autoloader || true
     php artisan key:generate || true
@@ -250,35 +266,77 @@ fi
 
 echo ""
 print_line
-echo -e "  ${C}[12/13] Security setup${NC}"
+echo -e "  ${C}[12/14] Database migration${NC}"
 print_line
-ufw allow OpenSSH
-ufw allow "Apache Full"
-ufw --force enable
-systemctl enable fail2ban
 
-if [ "$USE_SSL" = true ]; then
-    echo ""
-    echo -e "  ${C}Installing SSL${NC}"
-    apt install -y certbot python3-certbot-apache
-    certbot --apache -d "$DOMAIN" --agree-tos --non-interactive -m admin@$DOMAIN || true
+run_sql_files() {
+    local dir="$1"
+    local count=0
+    for SQL_FILE in "$dir"/*.sql; do
+        [ -f "$SQL_FILE" ] || continue
+        echo -e "  ${C}→${NC} Importing: $(basename "$SQL_FILE")"
+        mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$SQL_FILE" || {
+            print_warn "Failed to import $(basename "$SQL_FILE"), skipping"
+            continue
+        }
+        count=$((count + 1))
+    done
+    return $count
+}
+
+if [ "$IS_LARAVEL" = true ]; then
+    echo -e "  ${C}→${NC} Running artisan migrate..."
+    php artisan migrate --force || {
+        print_warn "artisan migrate failed"
+        read -p "  Import .sql files instead? [y/n]: " IMPORT_SQL </dev/tty
+        if [ "$IMPORT_SQL" = "y" ] || [ "$IMPORT_SQL" = "Y" ]; then
+            IS_LARAVEL=false
+        fi
+    }
+fi
+
+if [ "$IS_LARAVEL" = false ]; then
+    SQL_COUNT=0
+    for DIR in "$WEB" "$WEB/database" "$WEB/sql" "$WEB/db" "$WEB/storage"; do
+        if [ -d "$DIR" ]; then
+            run_sql_files "$DIR" || true
+            FOUND=$?
+            SQL_COUNT=$((SQL_COUNT + FOUND))
+        fi
+    done
+
+    if [ "$SQL_COUNT" -eq 0 ]; then
+        echo -e "  ${Y}No .sql files found${NC}"
+        read -p "  Import .sql file manually? (enter path or leave empty): " MANUAL_SQL </dev/tty
+        if [ -n "$MANUAL_SQL" ]; then
+            [ -f "$MANUAL_SQL" ] || error_exit "File not found: $MANUAL_SQL"
+            mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$MANUAL_SQL" || error_exit "SQL import failed"
+            print_ok "Imported: $(basename "$MANUAL_SQL")"
+        else
+            print_warn "Skipped. Make sure DB is ready before creating admin."
+        fi
+    else
+        print_ok "Imported $SQL_COUNT SQL file(s)"
+    fi
 fi
 
 echo ""
 print_line
-echo -e "  ${C}[13/13] Admin account${NC}"
+echo -e "  ${C}[13/14] Admin account${NC}"
 print_line
 read -p "  Create admin account? [y/n]: " CREATE_ADMIN </dev/tty
 
 if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
-    IS_LARAVEL=false
-    [ -f "$WEB/artisan" ] && IS_LARAVEL=true
-
     while true; do
         read -p "  Table Name: " ADMIN_TABLE </dev/tty
         [ -n "$ADMIN_TABLE" ] && break
         echo -e "  ${R}Cannot be empty${NC}"
     done
+
+    mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
+        -e "SELECT 1 FROM \`$ADMIN_TABLE\` LIMIT 0" 2>/dev/null \
+        || error_exit "Table '$ADMIN_TABLE' does not exist. Check your .sql file or migration."
+
     while true; do
         read -p "  Username/Email Column: " ADMIN_USER_COL </dev/tty
         [ -n "$ADMIN_USER_COL" ] && break
@@ -328,8 +386,23 @@ if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
     mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
         -e "INSERT INTO \`$ADMIN_TABLE\` (\`$ADMIN_USER_COL\`, \`$ADMIN_PASS_COL\`) VALUES ('$ADMIN_EMAIL', '$HASHED_PASS');" \
         || error_exit "Failed to create admin account"
-
     print_ok "Admin account created!"
+fi
+
+echo ""
+print_line
+echo -e "  ${C}[14/14] Security setup${NC}"
+print_line
+ufw allow OpenSSH
+ufw allow "Apache Full"
+ufw --force enable
+systemctl enable fail2ban
+
+if [ "$USE_SSL" = true ]; then
+    echo ""
+    echo -e "  ${C}Installing SSL${NC}"
+    apt install -y certbot python3-certbot-apache
+    certbot --apache -d "$DOMAIN" --agree-tos --non-interactive -m admin@$DOMAIN || true
 fi
 
 IP=$(hostname -I | awk '{print $1}')

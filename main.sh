@@ -18,22 +18,35 @@ C='\033[0;36m'
 NC='\033[0m'
 
 print_logo() {
+    local COLUMNS
+    COLUMNS=$(tput cols 2>/dev/null || echo 80)
     echo -e "${BG}"
-    echo "(           (    (        )      )             )     *     (        )      )          (     "
-    echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
-    echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  )\()\\  )\()\\  )\    (()/(  "
-    echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
-    echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
-    echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
-    echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
-    echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    if [ "$COLUMNS" -ge 90 ]; then
+        echo "(           (    (        )      )             )     *     (        )      )          (     "
+        echo " )\ )        )\ ) )\ )  ( /(   ( /(     (    ( /(   (  \`    )\ )  ( /(   ( /(   (      )\ )  "
+        echo "(()/(   (   (()/((()/(  )\()\\  )\()\\  ( )\   )\()\\  )\))(  (()/(  \()\\  )\()\\  )\    (()/(  "
+        echo " /(_))  )\   /(_))/(_))((_)\  ((_)\   )((_) ((_)\  ((_)()\\  /(_))((_)\  ((_)\((((_)(   /(_)) "
+        echo "(_))_  ((_) (_)) (_))    ((_)__ ((_) ((_)_ __ ((_) (_()((_)(_))   _((_)__ ((_))\\ _ )\ (_))   "
+        echo " |   \\ | __|| _ \\| |    / _ \\\\ \\/ /  | _ )\\ \\/ / |  \\/  ||_ _| |_  / \\ \\/ /(_)_\\(_)| |    "
+        echo " | |) || _| |  _/| |__ | (_) |\\ V /   | _ \\ \\/ /  | |\\/| | | |   / /   \\ \\/ /  / _ \\  | |__  "
+        echo " |___/ |___||_|  |____| \\___/  |_|    |___/  |_|   |_|  |_||___| /___|   |_|  /_/ \\_\\ |____|"
+    else
+        echo "  ____  _     ___ _   _ __  __ "
+        echo " |  _ \\| |   |_ _| \\ | |  \\/  |"
+        echo " | |_) | |    | ||  \\| | |\\/| |"
+        echo " |  __/| |___ | || |\\  | |  | |"
+        echo " |_|   |_____|___|_| \\_|_|  |_|"
+        echo ""
+        echo "  __  __                 "
+        echo " |  \\/  | ___ _ __  ___ "
+        echo " | |\\/| |/ _ \\ '_ \\/ __|"
+        echo " | |  | |  __/ | | \\__ \\\\"
+        echo " |_|  |_|\\___|_| |_|___/"
+    fi
     echo -e "${NC}"
 }
 
-print_line() {
-    echo -e "${DG}─────────────────────────────────────────${NC}"
-}
-
+print_line() { echo -e "${DG}─────────────────────────────────────────${NC}"; }
 print_ok()   { echo -e "  ${BG}[OK]${NC}    $1"; }
 print_warn() { echo -e "  ${Y}[WARN]${NC}  $1"; }
 print_fail() { echo -e "  ${R}[FAIL]${NC}  $1"; }
@@ -87,42 +100,53 @@ EOF
     exec bash "$INSTALL_DIR/main.sh" "$@"
 fi
 
-clear
-print_logo
-print_line
-echo -e "  ${C}Universal PHP Deployment System${NC}"
-print_line
-echo ""
-echo -e "  ${BG}1${NC}. Install Server"
-echo -e "  ${BG}2${NC}. Add Project"
-echo -e "  ${BG}3${NC}. Remove Project"
-echo -e "  ${BG}4${NC}. Server Status"
-echo -e "  ${BG}5${NC}. Diagnostics"
-echo -e "  ${BG}6${NC}. Full Reset"
-echo -e "  ${BG}7${NC}. Update Scripts"
-echo ""
-print_line
-read -p "  Choose [1-7]: " CHOICE </dev/tty
+while true; do
+    clear
+    print_logo
+    print_line
+    echo -e "  ${C}Universal PHP Deployment System${NC}"
+    print_line
+    echo ""
+    echo -e "  ${BG}1${NC}. Install Server"
+    echo -e "  ${BG}2${NC}. Add Project"
+    echo -e "  ${BG}3${NC}. Remove Project"
+    echo -e "  ${BG}4${NC}. Server Status"
+    echo -e "  ${BG}5${NC}. Diagnostics"
+    echo -e "  ${BG}6${NC}. Full Reset"
+    echo -e "  ${BG}7${NC}. Update Scripts"
+    echo ""
+    echo -e "  ${R}8${NC}. Exit"
+    echo ""
+    print_line
+    read -p "  Choose [1-8]: " CHOICE </dev/tty
 
-case "$CHOICE" in
-    1) bash "$INSTALL_DIR/install.sh" ;;
-    2) bash "$INSTALL_DIR/projectadd.sh" ;;
-    3) bash "$INSTALL_DIR/projectremove.sh" ;;
-    4) bash "$INSTALL_DIR/diagnostics.sh" --status ;;
-    5) bash "$INSTALL_DIR/diagnostics.sh" --full ;;
-    6) bash "$INSTALL_DIR/fullremove.sh" ;;
-    7)
-        echo ""
-        echo -e "  ${C}Updating scripts...${NC}"
-        for SCRIPT in $SCRIPTS; do
-            curl -fsSL "$SCRIPT_URL/$SCRIPT" -o "$INSTALL_DIR/$SCRIPT" || error_exit "Update failed: $SCRIPT"
-            chmod +x "$INSTALL_DIR/$SCRIPT"
-            echo -e "  ${BG}→${NC} $SCRIPT"
-        done
-        echo ""
-        echo -e "  ${BG}All updated!${NC}"
-        read -p "  Press Enter..." </dev/tty
-        bash "$INSTALL_DIR/main.sh"
-        ;;
-    *) error_exit "Invalid choice" ;;
-esac
+    case "$CHOICE" in
+        1) bash "$INSTALL_DIR/install.sh" ;;
+        2) bash "$INSTALL_DIR/projectadd.sh" ;;
+        3) bash "$INSTALL_DIR/projectremove.sh" ;;
+        4) bash "$INSTALL_DIR/diagnostics.sh" --status ;;
+        5) bash "$INSTALL_DIR/diagnostics.sh" --full ;;
+        6) bash "$INSTALL_DIR/fullremove.sh" ;;
+        7)
+            echo ""
+            echo -e "  ${C}Updating scripts...${NC}"
+            for SCRIPT in $SCRIPTS; do
+                curl -fsSL "$SCRIPT_URL/$SCRIPT" -o "$INSTALL_DIR/$SCRIPT" || error_exit "Update failed: $SCRIPT"
+                chmod +x "$INSTALL_DIR/$SCRIPT"
+                echo -e "  ${BG}→${NC} $SCRIPT"
+            done
+            echo ""
+            echo -e "  ${BG}All updated!${NC}"
+            read -p "  Press Enter..." </dev/tty
+            ;;
+        8)
+            clear
+            echo -e "\n  ${BG}Goodbye!${NC}\n"
+            break
+            ;;
+        *)
+            echo -e "  ${Y}Invalid choice. Try again.${NC}"
+            read -p "  Press Enter..." </dev/tty
+            ;;
+    esac
+done
