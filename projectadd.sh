@@ -17,15 +17,17 @@ fi
 
 clear
 echo "====================================="
-echo "  DEPLOY BY MIZYAL v$VERSION"
+echo "  DEPLOY BY MIZYAL"
+echo "  Add New Project"
 echo "====================================="
 echo ""
 
-OS=$(lsb_release -is 2>/dev/null || echo Ubuntu)
-VID=$(lsb_release -rs 2>/dev/null || echo unknown)
-ARCH=$(dpkg --print-architecture)
-echo "OS: $OS | Version: $VID | Arch: $ARCH"
-echo ""
+command -v apache2 >/dev/null || error_exit "Apache2 not found. Run install.sh first."
+command -v php >/dev/null || error_exit "PHP not found. Run install.sh first."
+command -v mysql >/dev/null || error_exit "MySQL not found. Run install.sh first."
+command -v composer >/dev/null || error_exit "Composer not found. Run install.sh first."
+
+PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 
 # --- input ---
 
@@ -34,6 +36,9 @@ while true; do
     [ -n "$PROJECT" ] && break
     echo "Cannot be empty"
 done
+
+WEB="/var/www/$PROJECT"
+[ -d "$WEB" ] && error_exit "Project '$PROJECT' already exists"
 
 while true; do
     read -p "Git Repository: " REPO </dev/tty
@@ -86,83 +91,18 @@ while true; do
     echo "Cannot be empty"
 done
 
-WEB="/var/www/$PROJECT"
-
-# --- step 1: update ---
+# --- step 1: clone ---
 
 echo ""
-echo "[1/13] Updating system"
-echo ""
-apt update -y || error_exit "apt update failed"
-apt upgrade -y || true
-
-# --- step 2: base packages ---
-
-echo ""
-echo "[2/13] Installing base packages"
-echo ""
-apt install -y \
-    software-properties-common apt-transport-https ca-certificates \
-    curl wget git unzip gnupg lsb-release ufw fail2ban cron \
-    || error_exit "Base package install failed"
-
-# --- step 3: apache ---
-
-echo ""
-echo "[3/13] Installing Apache"
-echo ""
-apt install -y apache2 || error_exit "Apache install failed"
-command -v apache2 || error_exit "Apache not found"
-systemctl enable apache2
-
-# --- step 4: php ---
-
-echo ""
-echo "[4/13] Installing PHP"
-echo ""
-apt install -y \
-    php php-cli php-common php-fpm php-mysql php-curl \
-    php-gd php-mbstring php-xml php-zip php-intl php-bcmath \
-    || error_exit "PHP install failed"
-
-PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
-echo "PHP Version: $PHP_VERSION"
-systemctl enable php${PHP_VERSION}-fpm || true
-
-# --- step 5: mysql ---
-
-echo ""
-echo "[5/13] Installing MySQL"
-echo ""
-apt install -y mysql-server || error_exit "MySQL install failed"
-systemctl enable mysql
-systemctl start mysql
-
-# --- step 6: composer ---
-
-echo ""
-echo "[6/13] Installing Composer"
-echo ""
-
-if ! command -v composer >/dev/null; then
-    php -r "copy('https://getcomposer.org/installer','composer-setup.php');"
-    php composer-setup.php --install-dir=/usr/local/bin --filename=composer
-    rm composer-setup.php
-fi
-
-# --- step 7: clone project ---
-
-echo ""
-echo "[7/13] Downloading project"
+echo "[1/7] Downloading project"
 echo ""
 mkdir -p /var/www
-[ -d "$WEB" ] && rm -rf "$WEB"
 git clone --branch "$BRANCH" "$REPO" "$WEB" || error_exit "Git clone failed"
 
-# --- step 8: database ---
+# --- step 2: database ---
 
 echo ""
-echo "[8/13] Creating database"
+echo "[2/7] Creating database"
 echo ""
 mysql -u root <<SQL
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
@@ -171,12 +111,12 @@ GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 
-# --- step 9: apache config ---
+# --- step 3: apache config ---
 
 echo ""
-echo "[9/13] Configuring Apache"
+echo "[3/7] Configuring Apache"
 echo ""
-a2enmod rewrite proxy_fcgi setenvif
+a2enmod rewrite proxy_fcgi setenvif || true
 
 cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
 <VirtualHost *:80>
@@ -197,23 +137,22 @@ cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
 </VirtualHost>
 EOF
 
-a2dissite 000-default.conf || true
-a2ensite $PROJECT.conf
+a2ensite "$PROJECT.conf"
 systemctl reload apache2
 
-# --- step 10: permissions ---
+# --- step 4: permissions ---
 
 echo ""
-echo "[10/13] Setting permissions"
+echo "[4/7] Setting permissions"
 echo ""
 chown -R www-data:www-data "$WEB"
 find "$WEB" -type d -exec chmod 755 {} \;
 find "$WEB" -type f -exec chmod 644 {} \;
 
-# --- step 11: framework detect ---
+# --- step 5: framework detect ---
 
 echo ""
-echo "[11/13] Detecting framework"
+echo "[5/7] Detecting framework"
 echo ""
 cd "$WEB"
 
@@ -230,30 +169,10 @@ else
     echo "PHP Native"
 fi
 
-# --- step 12: security ---
+# --- step 6: admin account ---
 
 echo ""
-echo "[12/13] Security setup"
-echo ""
-ufw allow OpenSSH
-ufw allow "Apache Full"
-ufw --force enable
-systemctl enable fail2ban
-
-# --- ssl ---
-
-if [ "$USE_SSL" = true ]; then
-    echo ""
-    echo "Installing SSL"
-    echo ""
-    apt install -y certbot python3-certbot-apache
-    certbot --apache -d "$DOMAIN" --agree-tos --non-interactive -m admin@$DOMAIN || true
-fi
-
-# --- step 13: admin account ---
-
-echo ""
-echo "[13/13] Admin account"
+echo "[6/7] Admin account"
 echo ""
 read -p "Create admin account? [y/n]: " CREATE_ADMIN </dev/tty
 
@@ -324,13 +243,26 @@ if [ "$CREATE_ADMIN" = "y" ] || [ "$CREATE_ADMIN" = "Y" ]; then
     echo "Admin account created!"
 fi
 
+# --- step 7: ssl ---
+
+echo ""
+echo "[7/7] SSL Setup"
+echo ""
+
+if [ "$USE_SSL" = true ]; then
+    apt install -y certbot python3-certbot-apache || true
+    certbot --apache -d "$DOMAIN" --agree-tos --non-interactive -m admin@$DOMAIN || true
+else
+    echo "Skipped (IP mode)"
+fi
+
 # --- done ---
 
 IP=$(hostname -I | awk '{print $1}')
 
 echo ""
 echo "============================================="
-echo "  DEPLOYMENT SUCCESS"
+echo "  PROJECT ADDED"
 echo "============================================="
 echo ""
 echo "  Project  : $PROJECT"
