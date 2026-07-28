@@ -1,58 +1,106 @@
 #!/bin/bash
 
-####################################################
+#####################################################
 #
-#          DEPLOY BY MIZYAL
+#        DEPLOY BY MIZYAL
 #
-# Production PHP Deployment Installer
+# Universal Ubuntu PHP Deployment System
 #
-# Ubuntu 22.04 / 24.04
+# Version 2.0
 #
-####################################################
+# Support:
+# Ubuntu 20.04+
+# AMD64 / ARM64
+#
+#####################################################
 
 
-set -e
+set -Eeuo pipefail
 
 
-VERSION="1.0.0"
+VERSION="2.0"
+
+
+#############################################
+# ERROR HANDLER
+#############################################
+
+error_exit(){
+
+echo "
+======================================
+
+ERROR:
+
+$1
+
+======================================
+"
+
+exit 1
+
+}
+
+
+
+#############################################
+# ROOT CHECK
+#############################################
+
+if [ "$EUID" -ne 0 ]
+then
+error_exit "Please run as root"
+fi
+
+
+
+#############################################
+# SYSTEM INFO
+#############################################
 
 
 clear
 
 
 echo "
-================================================
 
-        🚀 DEPLOY BY MIZYAL
+======================================
 
-        Production Deployment System
+🚀 DEPLOY BY MIZYAL
 
-        Version $VERSION
+Universal Production Installer
 
-================================================
+Version $VERSION
+
+======================================
+
 "
 
 
 
-####################################
-# ROOT CHECK
-####################################
+OS=$(lsb_release -is 2>/dev/null || echo Ubuntu)
 
+VERSION_ID=$(lsb_release -rs 2>/dev/null || echo unknown)
 
-if [ "$EUID" -ne 0 ]
-then
-
-echo "Please run as root"
-
-exit 1
-
-fi
+ARCH=$(dpkg --print-architecture)
 
 
 
-####################################
+echo "
+
+System detected:
+
+OS      : $OS
+Version : $VERSION_ID
+Arch    : $ARCH
+
+"
+
+
+
+#############################################
 # INPUT
-####################################
+#############################################
 
 
 read -p "
@@ -62,13 +110,13 @@ Project Name:
 
 
 read -p "
-GitHub Repository:
+Git Repository:
 > " REPO
 
 
 
 read -p "
-Git Branch(default main):
+Branch(default main):
 > " BRANCH
 
 
@@ -78,7 +126,7 @@ BRANCH=${BRANCH:-main}
 
 echo "
 
-Deployment Mode
+Deployment Type:
 
 1. Domain
 2. IP Address
@@ -88,33 +136,26 @@ Deployment Mode
 
 
 
-read -p "
-Choose:
+read -p "Choose:
 > " MODE
 
 
 
-
-if [ "$MODE" == "1" ]
-
+if [ "$MODE" = "1" ]
 then
-
 
 read -p "
 Domain:
 > " DOMAIN
 
-
-
-SSL=true
+USE_SSL=true
 
 
 else
 
-
 DOMAIN="_"
 
-SSL=false
+USE_SSL=false
 
 
 fi
@@ -124,7 +165,7 @@ fi
 
 echo "
 
-Database Configuration
+Database
 
 "
 
@@ -146,88 +187,115 @@ read -s -p "
 Database Password:
 > " DB_PASS
 
-
 echo
 
 
 
-
-WEB_ROOT="/var/www/$PROJECT"
-
-BACKUP="/backup/$PROJECT"
+WEB="/var/www/$PROJECT"
 
 
 
-
-####################################
-# SYSTEM UPDATE
-####################################
+#############################################
+# UPDATE SYSTEM
+#############################################
 
 
 echo "
 
-[1/10] Updating system
+[1/12]
+Updating system
 
 "
 
 
-apt update
 
-apt upgrade -y
-
+apt update -y || error_exit "apt update failed"
 
 
 
-####################################
-# INSTALL PACKAGE
-####################################
+apt upgrade -y || true
+
+
+
+
+#############################################
+# BASE PACKAGE
+#############################################
 
 
 echo "
 
-[2/10] Installing packages
+[2/12]
+Installing base package
 
 "
 
 
 
 apt install -y \
-
-apache2 \
-mysql-server \
-git \
+software-properties-common \
+apt-transport-https \
+ca-certificates \
 curl \
 wget \
+git \
 unzip \
-composer \
+gnupg \
+lsb-release \
 ufw \
 fail2ban \
-certbot \
-python3-certbot-apache \
-software-properties-common
+cron \
+|| error_exit "Base package failed"
 
 
 
-
-####################################
-# PHP INSTALL
-####################################
+#############################################
+# APACHE
+#############################################
 
 
 echo "
 
-[3/10] Installing PHP
+[3/12]
+Installing Apache
+
+"
+
+
+
+apt install -y apache2 \
+|| error_exit "Apache installation failed"
+
+
+
+command -v apache2 \
+|| error_exit "Apache not found"
+
+
+
+systemctl enable apache2
+
+
+
+#############################################
+# PHP
+#############################################
+
+
+echo "
+
+[4/12]
+Installing PHP
 
 "
 
 
 
 apt install -y \
-
 php \
-php-fpm \
 php-cli \
 php-common \
+php-fpm \
 php-mysql \
 php-curl \
 php-gd \
@@ -236,21 +304,9 @@ php-xml \
 php-zip \
 php-intl \
 php-bcmath \
-php-opcache
+php-opcache \
+|| error_exit "PHP installation failed"
 
-
-
-
-####################################
-# PHP OPTIMIZATION
-####################################
-
-
-echo "
-
-[4/10] Optimizing PHP
-
-"
 
 
 
@@ -258,32 +314,92 @@ PHP_VERSION=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 
 
 
-cat >> /etc/php/$PHP_VERSION/fpm/php.ini <<EOF
+echo "
 
+PHP Version:
 
-opcache.enable=1
-opcache.memory_consumption=256
-opcache.max_accelerated_files=20000
-opcache.revalidate_freq=60
+$PHP_VERSION
 
-EOF
-
-
-
-systemctl restart php$PHP_VERSION-fpm
+"
 
 
 
 
+systemctl enable php${PHP_VERSION}-fpm || true
 
-####################################
-# DOWNLOAD PROJECT
-####################################
+
+
+#############################################
+# MYSQL
+#############################################
 
 
 echo "
 
-[5/10] Cloning project
+[5/12]
+Installing MySQL
+
+"
+
+
+
+apt install -y mysql-server \
+|| error_exit "MySQL install failed"
+
+
+
+systemctl enable mysql
+
+systemctl start mysql
+
+
+
+
+
+#############################################
+# COMPOSER
+#############################################
+
+
+echo "
+
+[6/12]
+Installing Composer
+
+"
+
+
+
+if ! command -v composer >/dev/null
+then
+
+
+php -r "copy('https://getcomposer.org/installer','composer-setup.php');"
+
+
+php composer-setup.php \
+--install-dir=/usr/local/bin \
+--filename=composer
+
+
+rm composer-setup.php
+
+
+fi
+
+
+
+
+
+#############################################
+# CLONE PROJECT
+#############################################
+
+
+echo "
+
+[7/12]
+Downloading Project
 
 "
 
@@ -293,32 +409,34 @@ mkdir -p /var/www
 
 
 
-if [ -d "$WEB_ROOT" ]
-
+if [ -d "$WEB" ]
 then
 
-rm -rf $WEB_ROOT
+rm -rf "$WEB"
 
 fi
 
 
 
 git clone \
--b $BRANCH \
-$REPO \
-$WEB_ROOT
+--branch "$BRANCH" \
+"$REPO" \
+"$WEB" \
+|| error_exit "Git clone failed"
 
 
 
 
-####################################
+
+#############################################
 # DATABASE
-####################################
+#############################################
 
 
 echo "
 
-[6/10] Creating database
+[8/12]
+Creating Database
 
 "
 
@@ -327,15 +445,14 @@ echo "
 mysql <<MYSQL
 
 
-CREATE DATABASE IF NOT EXISTS $DB_NAME;
-
+CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;
 
 CREATE USER IF NOT EXISTS '$DB_USER'@'localhost'
 IDENTIFIED BY '$DB_PASS';
 
 
 GRANT ALL PRIVILEGES
-ON $DB_NAME.*
+ON \`$DB_NAME\`.*
 TO '$DB_USER'@'localhost';
 
 
@@ -347,25 +464,23 @@ MYSQL
 
 
 
-####################################
+
+
+#############################################
 # APACHE CONFIG
-####################################
+#############################################
 
 
 echo "
 
-[7/10] Configuring Apache
+[9/12]
+Configuring Apache
 
 "
 
 
 
 a2enmod rewrite proxy_fcgi setenvif
-
-
-
-a2enconf php$PHP_VERSION-fpm
-
 
 
 
@@ -378,22 +493,21 @@ cat > /etc/apache2/sites-available/$PROJECT.conf <<EOF
 ServerName $DOMAIN
 
 
-DocumentRoot $WEB_ROOT
+DocumentRoot $WEB
 
 
 
-<Directory $WEB_ROOT>
+<Directory $WEB>
 
 AllowOverride All
 
 Require all granted
 
-
 </Directory>
 
 
 
-<FilesMatch \.php$>
+<FilesMatch "\.php$">
 
 SetHandler "proxy:unix:/run/php/php$PHP_VERSION-fpm.sock|fcgi://localhost/"
 
@@ -416,67 +530,70 @@ EOF
 
 a2dissite 000-default.conf || true
 
-
 a2ensite $PROJECT.conf
 
 
 
-systemctl restart apache2
+systemctl reload apache2
 
 
 
 
 
-####################################
+#############################################
 # PERMISSION
-####################################
+#############################################
 
 
 echo "
 
-[8/10] Setting permission
+[10/12]
+Permission Setup
 
 "
 
 
 
-chown -R www-data:www-data $WEB_ROOT
+chown -R www-data:www-data "$WEB"
 
 
-find $WEB_ROOT -type d -exec chmod 755 {} \;
-
-find $WEB_ROOT -type f -exec chmod 644 {} \;
+find "$WEB" -type d -exec chmod 755 {} \;
 
 
-
-
-####################################
-# LARAVEL CHECK
-####################################
+find "$WEB" -type f -exec chmod 644 {} \;
 
 
 
-if [ -f "$WEB_ROOT/artisan" ]
 
+
+#############################################
+# FRAMEWORK DETECT
+#############################################
+
+
+echo "
+
+[11/12]
+Framework Detection
+
+"
+
+
+
+cd "$WEB"
+
+
+
+if [ -f artisan ]
 then
 
 
-echo "
-
-Laravel detected
-
-"
-
-
-
-cd $WEB_ROOT
-
+echo "Laravel detected"
 
 
 composer install \
 --no-dev \
---optimize-autoloader
-
+--optimize-autoloader || true
 
 
 php artisan key:generate || true
@@ -488,20 +605,40 @@ php artisan storage:link || true
 php artisan config:cache || true
 
 
+
+elif [ -f composer.json ]
+then
+
+
+echo "PHP Composer Project"
+
+
+composer install || true
+
+
+
+else
+
+
+echo "PHP Native detected"
+
+
+
 fi
 
 
 
 
 
-####################################
-# FIREWALL
-####################################
+#############################################
+# SECURITY
+#############################################
 
 
 echo "
 
-[9/10] Security setup
+[12/12]
+Security Setup
 
 "
 
@@ -521,13 +658,12 @@ systemctl enable fail2ban
 
 
 
-####################################
+#############################################
 # SSL
-####################################
+#############################################
 
 
-if [ "$SSL" = true ]
-
+if [ "$USE_SSL" = true ]
 then
 
 
@@ -538,11 +674,17 @@ Installing SSL
 "
 
 
+
+apt install -y certbot python3-certbot-apache
+
+
+
 certbot --apache \
--d $DOMAIN \
+-d "$DOMAIN" \
 --agree-tos \
 --non-interactive \
--m admin@$DOMAIN || true
+-m admin@$DOMAIN \
+|| true
 
 
 
@@ -553,53 +695,21 @@ fi
 
 
 
-####################################
-# BACKUP
-####################################
-
-
-
-mkdir -p $BACKUP
-
-
-
-cat > /usr/local/bin/backup-$PROJECT.sh <<EOF
-
-
-#!/bin/bash
-
-
-mysqldump $DB_NAME > $BACKUP/database-\$(date +%F).sql
-
-
-EOF
-
-
-
-chmod +x /usr/local/bin/backup-$PROJECT.sh
-
-
-
-
-
-####################################
+#############################################
 # FINISH
-####################################
+#############################################
 
 
 
-SERVER_IP=$(hostname -I | awk '{print $1}')
+IP=$(hostname -I | awk '{print $1}')
 
-
-
-clear
 
 
 echo "
 
-================================================
+=============================================
 
-        🎉 DEPLOY SUCCESS
+🎉 DEPLOYMENT SUCCESS
 
 
 Project:
@@ -607,11 +717,9 @@ Project:
 $PROJECT
 
 
-
 Location:
 
-$WEB_ROOT
-
+$WEB
 
 
 Database:
@@ -619,23 +727,20 @@ Database:
 $DB_NAME
 
 
-
-Access:
-
+URL:
 
 "
 
 
 
-if [ "$SSL" = true ]
-
+if [ "$USE_SSL" = true ]
 then
 
 echo "https://$DOMAIN"
 
 else
 
-echo "http://$SERVER_IP"
+echo "http://$IP"
 
 fi
 
@@ -643,12 +748,10 @@ fi
 
 echo "
 
-================================================
+=============================================
 
+Deploy by Mizyal 🚀
 
-        Deploy by Mizyal 🚀
-
-
-================================================
+=============================================
 
 "
