@@ -1,48 +1,50 @@
 # Deploy by Mizyal
 
-One script to setup a fresh Ubuntu server and deploy PHP websites. Supports Laravel, Composer, and plain PHP.
+Script deployment otomatis untuk fresh Ubuntu server. Tinggal jalanin scriptnya, server langsung siap deploy website PHP. Support Laravel, Composer, dan PHP native.
 
-## Quick Start
+## Cara Pakai
+
+ langsung jalanin ini di server:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mizyal13/deploy-by-mizyal/main/main.sh | sudo bash
 ```
 
-After installation, you can run it anytime:
+abis itu kalau mau akses lagi tinggal ketik:
 
 ```bash
 deploybymizyal
 ```
 
-## What It Does
+## Fitur
 
-- Installs Apache2, PHP (with common extensions), MySQL, Composer
-- Clones your project from Git
-- Creates database and user
-- Configures Apache VirtualHost with PHP-FPM
-- Auto-detects framework (Laravel / Composer / PHP Native)
-- Sets up UFW firewall and fail2ban
-- Optional SSL via Certbot
-- Optional admin account creation (bcrypt/md5/plain)
+- Install Apache2, PHP (sama extensionnya), MySQL, Composer
+- Clone project dari Git langsung ke /var/www/
+- Buat database + user otomatis
+- Config Apache VirtualHost sama PHP-FPM
+- Auto detect framework (Laravel / Composer / PHP Native)
+- Setup UFW firewall sama fail2ban
+- SSL gratis via Certbot (kalau pilih domain)
+- Bisa bikin akun admin pas deployment (bcrypt/md5/plain)
 
-## Scripts
+## Script Yang Ada
 
-| Script | Description |
-|--------|-------------|
-| `main.sh` | Entry point - menu to access everything |
-| `install.sh` | Full server setup + first project |
-| `projectadd.sh` | Add new project to existing server |
-| `projectremove.sh` | Remove a project |
-| `fullremove.sh` | Reset server to fresh Ubuntu |
-| `diagnostics.sh` | Health check and error scanner |
+| Script | Fungsi |
+|--------|--------|
+| `main.sh` | Menu utama, akses semua fitur |
+| `install.sh` | Install server fresh + project pertama |
+| `projectadd.sh` | Tambah project baru di server yang udah ada |
+| `projectremove.sh` | Hapus project |
+| `fullremove.sh` | Reset server balik ke fresh Ubuntu |
+| `diagnostics.sh` | Cek status server + error scanner |
 
-## Requirements
+## Yang Dibutuhin
 
-- Fresh Ubuntu 20.04+ server
-- Root access
-- A Git repository URL for your project
+- Ubuntu 20.04 ke atas (fresh install)
+- Akses root
+- URL repository Git project lu
 
-## Tested On
+## Udah Di Test Di
 
 - Ubuntu 20.04, 22.04, 24.04, 26.04
-- AMD64 and ARM64
+- AMD64 sama ARM64
