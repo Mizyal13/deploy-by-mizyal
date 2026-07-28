@@ -304,7 +304,6 @@ php-xml \
 php-zip \
 php-intl \
 php-bcmath \
-php-opcache \
 || error_exit "PHP installation failed"
 
 
