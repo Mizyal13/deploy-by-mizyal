@@ -134,18 +134,8 @@ chown root:root "$LOCAL_DB_CONFIG" "$DB_CONFIG" "$ENV_FILE" 2>/dev/null || true
 chmod 600 "$LOCAL_DB_CONFIG" "$DB_CONFIG" "$ENV_FILE" 2>/dev/null || true
 print_ok "Permission diterapkan"
 
-if [ -f "$WEB/database/init.sql" ]; then
-    info_lines "  UPDATE DATABASE (OPSIONAL)"
-    echo -e "  ${Y}PERINGATAN: init.sql berisi DROP DATABASE IF EXISTS.${NC}"
-    echo -e "  ${Y}Menjalankannya akan MENGHAPUS SEMUA DATA lalu buat ulang.${NC}"
-    read -p "  Import init.sql (reset database)? [y/N]: " IMPORT_DB </dev/tty
-    if [ "$IMPORT_DB" = "y" ] || [ "$IMPORT_DB" = "Y" ]; then
-        mysql -u root < "$WEB/database/init.sql" || print_warn "Import init.sql gagal"
-        print_ok "Database di-reset dari init.sql"
-    else
-        echo -e "  ${DG}→ Lewati. Kalau butuh ubah skema, import via phpMyAdmin.${NC}"
-    fi
-fi
+print_info "Database TIDAK disentuh (production aman) — update hanya kode aplikasi + kredensial."
+print_info "Kalau butuh ubah skema data, import SQL manual via phpMyAdmin."
 
 info_lines "  VERIFIKASI"
 APP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost 2>/dev/null || echo 000)
