@@ -43,7 +43,14 @@ Repository: `https://github.com/hanafi0508/SPKSOLIDES.git` (native PHP + MySQLi,
 sudo bash deploy-solides.sh
 ```
 
-Saat diminta, isi **domain** yang sudah DNS-only (grey cloud) ke IP server (jangan orange cloud). Kredensial dibuat otomatis, tampil di akhir, dan disimpan di `/root/solides-credentials.txt`.
+Saat diminta:
+
+- isi **domain** kamu (harus ada di zona Cloudflare, mis. `solides.example.com`), lalu
+- masukkan **token tunnel** Cloudflare (Dashboard → Zero Trust → Networks → Tunnels → cloudflared).
+
+Di dashboard Cloudflare, set **public hostname** `solides.example.com` → `http://localhost:80`. Tidak perlu A record ke IP publik — akses lewat **Cloudflare Tunnel** (orange cloud), HTTPS ditangani Cloudflare Universal SSL. Kredensial dibuat otomatis, tampil di akhir, dan disimpan di `/root/solides-credentials.txt`.
+
+> Catatan: firewall hanya membuka SSH; port web (80/443) tidak diekspos ke publik karena semua lewat tunnel. Pastikan server bisa konek **outbound** (TCP 7844 / fallback 443) ke Cloudflare.
 
 ### Update setelah ada perubahan code (menu 8, atau langsung)
 
@@ -63,5 +70,5 @@ Menarik code terbaru tanpa merusak `config/database.local.php` (kredensial serve
 | `projectremove.sh` | Hapus project dari server |
 | `diagnostics.sh` | Status & full diagnostics server |
 | `fullremove.sh` | Full reset server (hapus semuanya, SSH tetap) |
-| `deploy-solides.sh` | Install server + deploy pertama SOLIDES (Apache, PHP-FPM, MySQL, phpMyAdmin, UFW, fail2ban, SSL) |
+| `deploy-solides.sh` | Install server + deploy pertama SOLIDES (Apache, PHP-FPM, MySQL, phpMyAdmin, UFW, fail2ban, Cloudflare Tunnel) |
 | `update-solides.sh` | Update project SOLIDES ke commit terbaru + restore kredensial + permission |

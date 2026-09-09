@@ -73,7 +73,7 @@ echo ""
 print_line
 
 while true; do
-    read -p "  Domain (sudah mengarah ke server, DNS only/grey cloud): " DOMAIN </dev/tty
+    read -p "  Domain (di zona Cloudflare kamu): " DOMAIN </dev/tty
     DOMAIN=$(echo "$DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
     if [[ "$DOMAIN" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
         break
@@ -83,7 +83,8 @@ done
 
 echo ""
 echo -e "  ${Y}Pastikan:${NC}"
-echo -e "  - Record DNS A untuk $DOMAIN → IP server ini (grey cloud, BUKAN orange cloud)"
+echo -e "  - Domain $DOMAIN ada di zona Cloudflare kamu (orange cloud / tunnel)"
+echo -e "  - Dashboard Cloudflare: buat tunnel lalu set public hostname $DOMAIN → http://localhost:80"
 echo -e "  - Repository ${GIT_REPO} sudah di-push ke branch ${GIT_BRANCH}"
 echo ""
 read -p "  Lanjut? [y/n]: " GO </dev/tty
@@ -302,9 +303,8 @@ EOF
     systemctl reload apache2
 fi
 
-log_progress "  [14/14] Setup firewall, fail2ban, SSL"
+log_progress "  [14/14] Setup firewall, fail2ban, Cloudflare Tunnel"
 ufw allow OpenSSH
-ufw allow "Apache Full"
 ufw --force enable
 apt install -y fail2ban || true
 
@@ -336,23 +336,44 @@ EOF
 systemctl enable fail2ban
 systemctl restart fail2ban || print_warn "fail2ban gagal restart (cek log /var/log/fail2ban.log)"
 
-apt install -y certbot python3-certbot-apache
-CERTBOT_OK=false
-if certbot --apache -d "$DOMAIN" --agree-tos --non-interactive -m "admin@$DOMAIN"; then
-    CERTBOT_OK=true
+echo ""
+print_info "Memasang Cloudflare Tunnel (token)..."
+if command -v cloudflared >/dev/null 2>&1; then
+    print_ok "cloudflared sudah terpasang"
 else
-    print_warn "Certbot gagal — cek DNS (harus grey cloud / DNS only). Situs tetap jalan via http."
+    apt install -y curl gpg || true
+    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+        | gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflare main" \
+        > /etc/apt/sources.list.d/cloudflare-main.list
+    apt update -y || true
+    apt install -y cloudflared || error_exit "Gagal install cloudflared"
+fi
+
+echo ""
+echo -e "  ${Y}Masukkan TOKEN tunnel kamu (Dashboard Cloudflare: Zero Trust → Networks → Tunnels → cloudflared).${NC}"
+echo -e "  ${Y}Pastikan public hostname $DOMAIN sudah di-set → http://localhost:80${NC}"
+while true; do
+    read -s -p "  Tunnel token: " CF_TOKEN </dev/tty
+    echo
+    [ -n "$CF_TOKEN" ] && break
+    print_warn "Token tidak boleh kosong"
+done
+
+cloudflared service install "$CF_TOKEN" \
+    || print_warn "cloudflared service install gagal — jalankan manual: cloudflared service install <token>"
+sleep 3
+if systemctl is-active --quiet cloudflared; then
+    TUNNEL_OK=true
+    print_ok "Cloudflare Tunnel aktif"
+else
+    TUNNEL_OK=false
+    print_warn "Tunnel belum aktif — cek: sudo journalctl -u cloudflared -n 50"
 fi
 
 IP=$(hostname -I | awk '{print $1}')
-
-if [ "$CERTBOT_OK" = true ]; then
-    SITE_URL="https://$DOMAIN"
-    PMA_URL="https://$DOMAIN/phpmyadmin"
-else
-    SITE_URL="http://$IP"
-    PMA_URL="http://$IP/phpmyadmin"
-fi
+SITE_URL="https://$DOMAIN"
+PMA_URL="https://$DOMAIN/phpmyadmin"
 
 cat > "$CREDS_FILE" <<EOF
 ========================================
@@ -379,7 +400,8 @@ cat > "$CREDS_FILE" <<EOF
  Server
    IP          : $IP
    Domain      : $DOMAIN
-   SSL         : $( [ "$CERTBOT_OK" = true ] && echo aktif || echo belum )
+   SSL         : Cloudflare Tunnel (Universal SSL/edge)
+   Tunnel      : $( [ "$TUNNEL_OK" = true ] && echo aktif || echo belum aktif )
 ========================================
 EOF
 chmod 600 "$CREDS_FILE"
@@ -397,6 +419,7 @@ echo -e "  ${BG}║${NC}  User     : $DB_ADMIN_USER"
 echo -e "  ${BG}║${NC}  Password : $DB_ADMIN_PASS"
 echo -e "  ${BG}║${NC}"
 echo -e "  ${BG}║${NC}  DB App   : ${DB_NAME} (${DB_APP_USER})"
+echo -e "  ${BG}║${NC}  Tunnel   : $( [ "$TUNNEL_OK" = true ] && echo "${G}AKTIF${NC}" || echo "${Y}belum aktif${NC}")"
 echo -e "  ${BG}║${NC}  .env     : $WEB/.env (phpMyAdmin creds)"
 echo -e "  ${BG}║${NC}  Kredensial tersimpan di: $CREDS_FILE"
 echo -e "  ${BG}╚══════════════════════════════════════════════════════════╝${NC}"
@@ -405,11 +428,10 @@ echo ""
 print_info "Verifikasi akhir..."
 APP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost 2>/dev/null || echo 000)
 TABLE_COUNT=$(mysql -u root -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$DB_NAME';" 2>/dev/null || echo 0)
-PMA_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PMA_URL" 2>/dev/null || echo 000)
-
 echo -e "  ${DG}App HTTP status : $APP_CODE (200/302 = OK)${NC}"
 echo -e "  ${DG}Tabel DB       : $TABLE_COUNT (9 = OK)${NC}"
-echo -e "  ${DG}phpMyAdmin     : $PMA_CODE (200/302 = OK)${NC}"
+echo -e "  ${DG}Tunnel         : $( systemctl is-active cloudflared 2>/dev/null || echo tidak-ada )"
+echo -e "  ${DG}Cek dari browser: $SITE_URL dan $PMA_URL (via Cloudflare)${NC}"
 if [ -s "$WEB/.env" ]; then
     echo -e "  ${DG}.env           : OK ($(grep -c '=' "$WEB/.env") keys)${NC}"
 else
