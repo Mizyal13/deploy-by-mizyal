@@ -33,6 +33,12 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 TUNNEL_NAME="solides"
+TUNNEL_AUTO="${TUNNEL_AUTO:-0}"
+TUNNEL_DOMAIN="${TUNNEL_DOMAIN:-}"
+
+if [ "$TUNNEL_AUTO" = "1" ]; then
+    print_info "Mode otomatis (dipanggil deploy) — tanpa input, domain: ${TUNNEL_DOMAIN:-dari config}"
+fi
 
 print_line
 echo -e "  ${C}CLOUDFLARE TUNNEL SETUP (LOGIN)  v$VERSION${NC}"
@@ -65,6 +71,9 @@ CERT_FILE="$HOME/.cloudflared/cert.pem"
 if [ -f "$CERT_FILE" ]; then
     print_ok "Sudah login Cloudflare ($CERT_FILE)"
 else
+    if [ "$TUNNEL_AUTO" = "1" ]; then
+        error_exit "Belum login Cloudflare (cert.pem tidak ada) — jalankan menu 9 sekali untuk login browser, lalu publish lagi"
+    fi
     mkdir -p "$HOME/.cloudflared"
     echo -e "  ${Y}Di layar akan muncul URL — buka di browser, login akun Cloudflare, lalu klik Allow/Authorize.${NC}"
     cloudflared tunnel login || error_exit "Login Cloudflare gagal"
@@ -89,7 +98,18 @@ if [ -z "$EXISTING_DOMAIN" ] && [ -f /etc/apache2/sites-available/solides.conf ]
         EXISTING_DOMAIN=$CANDIDATE
     fi
 fi
-if [ -n "$EXISTING_DOMAIN" ]; then
+if [ "$TUNNEL_AUTO" = "1" ] && [ -n "$TUNNEL_DOMAIN" ]; then
+    DOMAIN=$(echo "$TUNNEL_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+    if ! [[ "$DOMAIN" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
+        error_exit "TUNNEL_DOMAIN tidak valid: $DOMAIN"
+    fi
+    print_ok "Domain otomatis: $DOMAIN"
+elif [ "$TUNNEL_AUTO" = "1" ] && [ -n "$EXISTING_DOMAIN" ]; then
+    DOMAIN=$EXISTING_DOMAIN
+    print_ok "Pakai domain dari config: $DOMAIN"
+elif [ "$TUNNEL_AUTO" = "1" ]; then
+    error_exit "Mode otomatis tanpa domain — jalankan dengan TUNNEL_DOMAIN=..."
+elif [ -n "$EXISTING_DOMAIN" ]; then
     EXISTING_DOMAIN=$(echo "$EXISTING_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
     read -p "  Domain saat ini: $EXISTING_DOMAIN — Enter untuk pakai, atau ketik domain BARU: " NEW_DOMAIN </dev/tty
     NEW_DOMAIN=$(echo "$NEW_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')

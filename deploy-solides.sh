@@ -383,14 +383,47 @@ if [ -s "$WEB/.env" ]; then
 else
     print_warn ".env tidak ditemukan"
 fi
+
+HTTP_GOOD='^(200|301|302|303|307|308)$'
 PUB_CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 "https://$DOMAIN" 2>/dev/null || echo 000)
-case "$PUB_CODE" in
-    200|301|302|303|307|308)
-        print_ok "Akses publik https://$DOMAIN → HTTP $PUB_CODE (TUNNEL AKTIF)"
-        ;;
-    *)
-        print_warn "Akses publik https://$DOMAIN belum bisa diakses (HTTP $PUB_CODE)"
-        print_warn "Tunnel Cloudflare belum aktif — jalankan menu 9 (Setup Cloudflare Tunnel), tunggu sampai 'AKTIF', lalu buka URL-nya."
-        ;;
-esac
+if [[ "$PUB_CODE" =~ $HTTP_GOOD ]]; then
+    print_ok "Akses publik https://$DOMAIN → HTTP $PUB_CODE (TUNNEL AKTIF)"
+else
+    print_warn "https://$DOMAIN belum bisa diakses (HTTP $PUB_CODE) — aktifkan tunnel otomatis dari deploy..."
+    SETUP_TUNNEL="$(dirname "$0")/setup-tunnel.sh"
+    [ -f "$SETUP_TUNNEL" ] || SETUP_TUNNEL="/opt/deploy-by-mizyal/setup-tunnel.sh"
+    if [ -f "$SETUP_TUNNEL" ]; then
+        if TUNNEL_AUTO=1 TUNNEL_DOMAIN="$DOMAIN" bash "$SETUP_TUNNEL"; then
+            sleep 5
+            PUB_CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 "https://$DOMAIN" 2>/dev/null || echo 000)
+        else
+            print_warn "Setup tunnel gagal — jalankan menu 9 sekali untuk login Cloudflare di browser"
+        fi
+    else
+        print_warn "setup-tunnel.sh tidak ditemukan — jalankan menu 9"
+    fi
+fi
+
+if [[ "$PUB_CODE" =~ $HTTP_GOOD ]]; then
+    print_ok "Akses publik https://$DOMAIN → HTTP $PUB_CODE (SEMUA JALAN)"
+elif [[ "$PUB_CODE" =~ ^(500|502|503|504)$ ]]; then
+    print_warn "HTTP $PUB_CODE — restart PHP-FPM & Apache, lalu cek ulang..."
+    systemctl restart 'php*-fpm' 2>/dev/null || true
+    systemctl restart apache2 2>/dev/null || true
+    sleep 3
+    PUB_CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 "https://$DOMAIN" 2>/dev/null || echo 000)
+    if [[ "$PUB_CODE" =~ $HTTP_GOOD ]]; then
+        print_ok "Akses publik https://$DOMAIN → HTTP $PUB_CODE (SEMUA JALAN)"
+    else
+        print_fail "Domain tetap HTTP $PUB_CODE — diagnosa:"
+        echo -e "  ${DG}Service : apache2=$(systemctl is-active apache2 2>/dev/null) mysql=$(systemctl is-active mysql 2>/dev/null) cloudflared=$(systemctl is-active cloudflared 2>/dev/null) fpm=$(systemctl is-active 'php*-fpm' 2>/dev/null | tr '\n' ' ')${NC}"
+        tail -n 25 "/var/log/apache2/${PROJECT_NAME}-error.log" 2>/dev/null | sed 's/^/  /' || true
+        tail -n 25 /var/log/php*-fpm.log 2>/dev/null | sed 's/^/  /' || true
+        print_warn "Tempel output di atas untuk dianalisa."
+    fi
+else
+    print_fail "Akses publik https://$DOMAIN masih gagal (HTTP $PUB_CODE)"
+    echo -e "  ${DG}Service : apache2=$(systemctl is-active apache2 2>/dev/null) mysql=$(systemctl is-active mysql 2>/dev/null) cloudflared=$(systemctl is-active cloudflared 2>/dev/null)${NC}"
+    print_warn "Pastikan login Cloudflare sudah pernah dilakukan (menu 9), zona DNS aktif, lalu tempel output di atas."
+fi
 echo ""
