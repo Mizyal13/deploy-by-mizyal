@@ -26,13 +26,3 @@ Bagian ini menarik code terbaru tanpa me-rusak `config/database.local.php` (kred
 |------|--------|
 | `deploy-solides.sh` | Install server (Apache, PHP-FPM, MySQL, phpMyAdmin, UFW, fail2ban, SSL) + deploy pertama SOLIDES |
 | `update-solides.sh` | Update project di server ke commit terbaru dari GitHub + restore kredensial + permission |
-
-## Env Override (opsional)
-
-| Env | Default |
-|-----|---------|
-| `SOLIDES_DB_NAME` | `spk_supplier` |
-| `SOLIDES_DB_USER` | `solides` |
-| `SOLIDES_DB_ADMIN_USER` | `solides_admin` |
-| `SOLIDES_GIT_REPO` | `https://github.com/hanafi0508/SPKSOLIDES.git` |
-| `SOLIDES_GIT_BRANCH` | `main` |
