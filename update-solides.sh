@@ -40,6 +40,28 @@ fi
 
 [ -d "$WEB/.git" ] || error_exit "$WEB bukan repository git. Jalankan deploy-solides.sh dulu."
 
+DOMAIN_CURRENT=""
+if [ -f "/etc/apache2/sites-available/$PROJECT_NAME.conf" ]; then
+    DOMAIN_CURRENT=$(awk '/ServerName/{print $2; exit}' "/etc/apache2/sites-available/$PROJECT_NAME.conf" 2>/dev/null | xargs || true)
+fi
+if [ -z "$DOMAIN_CURRENT" ] && [ -f /etc/cloudflared/config.yml ]; then
+    DOMAIN_CURRENT=$(grep 'hostname:' /etc/cloudflared/config.yml 2>/dev/null | awk '/hostname:/{print $3}' | grep -v '^www\.' | head -1 | xargs || true)
+fi
+DOMAIN_NEW=""
+if [ -n "$DOMAIN_CURRENT" ]; then
+    read -p "  Ganti domain ($DOMAIN_CURRENT) ke yang lain? [y/N]: " CHANGE_DOMAIN </dev/tty
+    if [ "$CHANGE_DOMAIN" = "y" ] || [ "$CHANGE_DOMAIN" = "Y" ]; then
+        while true; do
+            read -p "  Domain baru (mis. solides.example.com): " DOMAIN_NEW </dev/tty
+            DOMAIN_NEW=$(echo "$DOMAIN_NEW" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+            if [[ "$DOMAIN_NEW" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
+                break
+            fi
+            print_warn "Domain tidak valid. Contoh: solides.example.com"
+        done
+    fi
+fi
+
 info_lines() {
     echo ""
     print_line
@@ -168,13 +190,40 @@ if [ -f "$WEB/database/init.sql" ]; then
     fi
 fi
 
+if [ -n "$DOMAIN_NEW" ] && [ "$DOMAIN_NEW" != "$DOMAIN_CURRENT" ]; then
+    info_lines "  TERAPKAN DOMAIN BARU: $DOMAIN_NEW"
+    VHOST="/etc/apache2/sites-available/$PROJECT_NAME.conf"
+    if [ -f "$VHOST" ]; then
+        sed -i "s/ServerName .*/ServerName $DOMAIN_NEW/" "$VHOST"
+        systemctl reload apache2 2>/dev/null || true
+        print_ok "VirtualHost diarahkan ke $DOMAIN_NEW"
+    else
+        print_warn "Vhost $VHOST tidak ada — buat manual di Apache"
+    fi
+    if command -v cloudflared >/dev/null 2>&1; then
+        cloudflared tunnel route dns "$PROJECT_NAME" "$DOMAIN_NEW" >/dev/null 2>&1 \
+            || print_warn "route dns $DOMAIN_NEW gagal — pastikan zona Cloudflare sama dengan domain lama"
+        cloudflared tunnel route dns --delete "$PROJECT_NAME" "$DOMAIN_CURRENT" >/dev/null 2>&1 || true
+        if [ -f /etc/cloudflared/config.yml ]; then
+            sed -i -E "s/hostname: [^ ]+/hostname: $DOMAIN_NEW/" /etc/cloudflared/config.yml
+            systemctl restart cloudflared 2>/dev/null || true
+            print_ok "Tunnel Cloudflare diarahkan ke $DOMAIN_NEW"
+        fi
+    else
+        print_warn "cloudflared tidak terpasang — domain baru hanya berlaku lokal"
+    fi
+fi
+
 info_lines "  VERIFIKASI"
+DOMAIN_FINAL="${DOMAIN_NEW:-$DOMAIN_CURRENT}"
 APP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost 2>/dev/null || echo 000)
 echo -e "  ${DG}Commit     : $NEW_COMMIT${NC}"
 echo -e "  ${DG}HTTP status: $APP_CODE (200/302 = OK)${NC}"
+[ -n "$DOMAIN_FINAL" ] && echo -e "  ${DG}Domain     : $DOMAIN_FINAL${NC}"
 
 echo ""
 echo -e "  ${BG}╔═══════════════════════════════════════════╗${NC}"
 echo -e "  ${BG}║  ✓ PROJECT UPDATED ke $NEW_COMMIT            ║${NC}"
+[ -n "$DOMAIN_FINAL" ] && echo -e "  ${BG}║${NC}  Akses : https://$DOMAIN_FINAL"
 echo -e "  ${BG}╚═══════════════════════════════════════════╝${NC}"
 echo ""

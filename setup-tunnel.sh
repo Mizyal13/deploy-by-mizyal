@@ -90,8 +90,16 @@ if [ -z "$EXISTING_DOMAIN" ] && [ -f /etc/apache2/sites-available/solides.conf ]
     fi
 fi
 if [ -n "$EXISTING_DOMAIN" ]; then
-    DOMAIN=$(echo "$EXISTING_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
-    print_ok "Subdomain dari konfigurasi lama: $DOMAIN"
+    EXISTING_DOMAIN=$(echo "$EXISTING_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+    read -p "  Domain saat ini: $EXISTING_DOMAIN — Enter untuk pakai, atau ketik domain BARU: " NEW_DOMAIN </dev/tty
+    NEW_DOMAIN=$(echo "$NEW_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+    if [ -n "$NEW_DOMAIN" ] && [[ "$NEW_DOMAIN" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
+        DOMAIN=$NEW_DOMAIN
+        print_ok "Domain baru: $DOMAIN (route DNS lama $EXISTING_DOMAIN akan dihapus)"
+    else
+        DOMAIN=$EXISTING_DOMAIN
+        print_ok "Pakai domain saat ini: $DOMAIN"
+    fi
 else
     while true; do
         read -p "  Subdomain (mis. solides.example.com): " DOMAIN </dev/tty
@@ -119,6 +127,10 @@ fi
 UUID=$(cloudflared tunnel list | grep -E "^[a-z0-9-]+[[:space:]]+$TUNNEL_NAME[[:space:]]" | awk '{print $1}')
 [ -n "$UUID" ] || error_exit "Gagal mengambil UUID tunnel"
 
+if [ -n "${EXISTING_DOMAIN:-}" ] && [ "$EXISTING_DOMAIN" != "$DOMAIN" ]; then
+    cloudflared tunnel route dns --delete "$TUNNEL_NAME" "$EXISTING_DOMAIN" >/dev/null 2>&1 || true
+    print_warn "Route DNS lama $EXISTING_DOMAIN dihapus"
+fi
 DOMAIN_PARTS=$(echo "$DOMAIN" | tr '.' '\n' | grep -c '^[[:alnum:]-]\+$' || true)
 if [ "${DOMAIN_PARTS:-0}" -le 3 ]; then
     cloudflared tunnel route dns "$TUNNEL_NAME" "www.$DOMAIN" >/dev/null 2>&1 \
