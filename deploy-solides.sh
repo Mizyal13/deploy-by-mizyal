@@ -171,6 +171,21 @@ if [ -f "$WEB/database/init.sql" ]; then
 else
     print_warn "database/init.sql tidak ditemukan, lewati import"
 fi
+mysql -u root "$DB_NAME" -e "CREATE TABLE IF NOT EXISTS schema_migrations (id INT AUTO_INCREMENT PRIMARY KEY, filename VARCHAR(255) UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || true
+for MIG in "$WEB"/database/migration_*.sql; do
+    [ -f "$MIG" ] || continue
+    BASE=$(basename "$MIG")
+    if mysql -u root "$DB_NAME" -N -e "SELECT 1 FROM schema_migrations WHERE filename='$BASE';" 2>/dev/null | grep -q '^1$'; then
+        print_ok "Migrasi $BASE sudah pernah dijalankan (skip)"
+    else
+        if mysql -u root "$DB_NAME" < "$MIG"; then
+            mysql -u root "$DB_NAME" -e "INSERT INTO schema_migrations (filename) VALUES ('$BASE');" >/dev/null 2>&1 || true
+            print_ok "Migrasi $BASE dijalankan (data aman, tanpa drop)"
+        else
+            print_warn "Migrasi $BASE gagal — cek SQL-nya lalu import manual via phpMyAdmin"
+        fi
+    fi
+done
 
 log_progress "  [9/14] Menyiapkan kredensial database aplikasi"
 if [ ! -f "$WEB/config/database.php" ]; then

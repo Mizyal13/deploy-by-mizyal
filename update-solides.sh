@@ -74,6 +74,16 @@ else
     print_warn ".env tidak ditemukan, akan dibuat ulang dari template"
 fi
 
+info_lines "  BACKUP DATABASE (otomatis)"
+mkdir -p /root/backups
+DB_NAME="${DB_NAME:-spk_supplier}"
+BK_FILE="/root/backups/${PROJECT_NAME}-db-$(date +%Y%m%d-%H%M%S).sql.gz"
+if mysqldump -u root "$DB_NAME" 2>/dev/null | gzip -c > "$BK_FILE"; then
+    print_ok "Backup DB $DB_NAME → $BK_FILE"
+else
+    print_warn "Backup DB gagal (mysqldump?) — lanjut tanpa backup"
+fi
+
 info_lines "  GIT FETCH + RESET KE $GIT_BRANCH"
 git config --global --add safe.directory "$WEB" >/dev/null 2>&1 || true
 cd "$WEB"
@@ -125,6 +135,23 @@ if [ ! -f "$ENV_FILE" ] && [ -f "/root/${PROJECT_NAME}-env.backup" ]; then
     cp "/root/${PROJECT_NAME}-env.backup" "$ENV_FILE"
     print_ok ".env dipulihkan"
 fi
+
+info_lines "  MIGRASI DATABASE (OTOMATIS, TANPA RESET)"
+mysql -u root "$DB_NAME" -e "CREATE TABLE IF NOT EXISTS schema_migrations (id INT AUTO_INCREMENT PRIMARY KEY, filename VARCHAR(255) UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || print_warn "Tabel schema_migrations gagal dibuat, tetap lanjut"
+for MIG in "$WEB"/database/migration_*.sql; do
+    [ -f "$MIG" ] || continue
+    BASE=$(basename "$MIG")
+    if mysql -u root "$DB_NAME" -N -e "SELECT 1 FROM schema_migrations WHERE filename='$BASE';" 2>/dev/null | grep -q '^1$'; then
+        print_ok "Migrasi $BASE sudah pernah dijalankan (skip)"
+    else
+        if mysql -u root "$DB_NAME" < "$MIG"; then
+            mysql -u root "$DB_NAME" -e "INSERT INTO schema_migrations (filename) VALUES ('$BASE');" >/dev/null 2>&1 || true
+            print_ok "Migrasi $BASE dijalankan (data aman, tanpa drop)"
+        else
+            print_warn "Migrasi $BASE gagal — cek SQL-nya lalu import manual via phpMyAdmin"
+        fi
+    fi
+done
 
 info_lines "  PERMISSION"
 chown -R www-data:www-data "$WEB"
