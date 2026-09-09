@@ -40,18 +40,15 @@ Repository: `https://github.com/hanafi0508/SPKSOLIDES.git` (native PHP + MySQLi,
 
 ### Deploy pertama (menu 7, atau langsung)
 
+**Sebelumnya:** setup tunnel dulu lewat menu **9** (Setup Cloudflare Tunnel) — login Cloudflare, otomatis dibuatkan tunnel + subdomain (mis. `solides.example.com`).
+
 ```bash
 sudo bash deploy-solides.sh
 ```
 
-Saat diminta:
+Script hanya meminta **domain** yang sudah di-setup di menu 9. Tidak ada urusan token/Cloudflare di script ini — akses publik & HTTPS ditangani sepenuhnya oleh tunnel (Cloudflare Universal SSL). Kredensial dibuat otomatis, tampil di akhir, dan disimpan di `/root/solides-credentials.txt`.
 
-- isi **domain** kamu (harus ada di zona Cloudflare, mis. `solides.example.com`), lalu
-- masukkan **token tunnel** Cloudflare (Dashboard → Zero Trust → Networks → Tunnels → cloudflared).
-
-Di dashboard Cloudflare, set **public hostname** `solides.example.com` → `http://localhost:80`. Tidak perlu A record ke IP publik — akses lewat **Cloudflare Tunnel** (orange cloud), HTTPS ditangani Cloudflare Universal SSL. Kredensial dibuat otomatis, tampil di akhir, dan disimpan di `/root/solides-credentials.txt`.
-
-> Catatan: firewall hanya membuka SSH; port web (80/443) tidak diekspos ke publik karena semua lewat tunnel. Pastikan server bisa konek **outbound** (TCP 7844 / fallback 443) ke Cloudflare.
+> Catatan: firewall hanya membuka SSH; port web (80/443) tidak diekspos ke publik karena semua lewat tunnel.
 
 ### Update setelah ada perubahan code (menu 8, atau langsung)
 
