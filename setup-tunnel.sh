@@ -156,9 +156,23 @@ if [ "${DOMAIN_PARTS:-0}" -le 3 ]; then
     cloudflared tunnel route dns "$TUNNEL_NAME" "www.$DOMAIN" >/dev/null 2>&1 \
         || print_warn "route dns www.$DOMAIN tidak dibutuhkan/ditemukan, diabaikan"
 fi
-cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" 2>/dev/null \
-    || print_warn "route dns gagal — pastikan $DOMAIN ada di zona Cloudflare yang sama"
-print_ok "DNS $DOMAIN → tunnel ($UUID.cfargotunnel.com)"
+cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" >/dev/null 2>&1 || true
+sleep 5
+TARGET=$(dig +short CNAME "$DOMAIN" 2>/dev/null | head -1)
+if [ "$TARGET" = "$UUID.cfargotunnel.com" ]; then
+    print_ok "DNS $DOMAIN → $UUID.cfargotunnel.com (TERVERIFIKASI)"
+else
+    print_warn "CNAME belum menunjuk tunnel (sekarang: ${TARGET:-kosong}) — coba ulang route dns..."
+    cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" >/dev/null 2>&1 || true
+    sleep 10
+    TARGET=$(dig +short CNAME "$DOMAIN" 2>/dev/null | head -1)
+    if [ "$TARGET" = "$UUID.cfargotunnel.com" ]; then
+        print_ok "DNS $DOMAIN → $UUID.cfargotunnel.com (TERVERIFIKASI)"
+    else
+        print_warn "Route DNS belum terverifikasi (${TARGET:-kosong}) — login harus memakai akun pemilik zona, lalu:"
+        echo -e "  ${DG}cloudflared tunnel route dns $TUNNEL_NAME $DOMAIN${NC}"
+    fi
+fi
 
 print_line
 echo -e "  ${C}[5/5] Pasang service tunnel${NC}"
