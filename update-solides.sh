@@ -83,9 +83,11 @@ if mysqldump -u root "$DB_NAME" 2>/dev/null | gzip -c > "$BK_FILE"; then
 else
     print_warn "Backup DB gagal (mysqldump?) — lanjut tanpa backup"
 fi
+ls -1t /root/backups/${PROJECT_NAME}-db-*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
+print_info "Backup lama dibersihkan (hanya 5 backup terbaru disimpan)"
 
 info_lines "  GIT FETCH + RESET KE $GIT_BRANCH"
-git config --global --add safe.directory "$WEB" >/dev/null 2>&1 || true
+git config --global --get-all safe.directory 2>/dev/null | grep -qx "$WEB" || git config --global --add safe.directory "$WEB"
 cd "$WEB"
 GIT_TERMINAL_PROMPT=0 git fetch origin || error_exit "git fetch gagal — cek koneksi/repo (tidak pakai username/password GitHub)"
 git reset --hard "origin/$GIT_BRANCH" || error_exit "git reset gagal"
