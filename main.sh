@@ -99,7 +99,7 @@ while true; do
     echo -e "  ${BG}6${NC}. Full Reset"
     echo -e "  ${BG}7${NC}. Deploy SOLIDES"
     echo -e "  ${BG}8${NC}. Update SOLIDES"
-    echo -e "  ${BG}9${NC}. Setup Cloudflare Tunnel"
+    echo -e "  ${BG}9${NC}. Setup Cloudflare Tunnel (Login)"
     echo -e "  ${BG}10${NC}. Update Scripts"
     echo ""
     echo -e "  ${R}11${NC}. Exit"

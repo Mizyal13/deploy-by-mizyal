@@ -30,7 +30,7 @@ sudo deploybymizyal
 | 6 | Full Reset | Hapus SEMUA (uninstall Apache/PHP/MySQL, semua DB; SSH dipertahankan) |
 | 7 | Deploy SOLIDES | Deploy khusus project SOLIDES (AHP supplier selection) |
 | 8 | Update SOLIDES | Tarik commit terbaru SOLIDES + restore kredensial + permission |
-| 9 | Setup Cloudflare Tunnel | Pasang `cloudflared` + install service tunnel (paste token) |
+| 9 | Setup Cloudflare Tunnel (Login) | Login Cloudflare → buat tunnel + subdomain otomatis + service |
 | 10 | Update Scripts | Re-download semua script dari GitHub (upgrade CLI) |
 | 11 | Exit | Keluar menu |
 
@@ -73,4 +73,4 @@ Menarik code terbaru tanpa merusak `config/database.local.php` (kredensial serve
 | `fullremove.sh` | Full reset server (hapus semuanya, SSH tetap) |
 | `deploy-solides.sh` | Install server + deploy pertama SOLIDES (Apache, PHP-FPM, MySQL, phpMyAdmin, UFW, fail2ban, Cloudflare Tunnel) |
 | `update-solides.sh` | Update project SOLIDES ke commit terbaru + restore kredensial + permission |
-| `setup-tunnel.sh` | Pasang `cloudflared` + install service tunnel (paste token) |
+| `setup-tunnel.sh` | Login Cloudflare → buat tunnel + subdomain (CNAME otomatis) + pasang service |

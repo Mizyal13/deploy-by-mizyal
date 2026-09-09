@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-VERSION="1.0"
+VERSION="2.0"
 
 G='\033[0;32m'
 BG='\033[1;32m'
@@ -32,47 +32,18 @@ if [ "$EUID" -ne 0 ]; then
     error_exit "Run as root (sudo)"
 fi
 
+TUNNEL_NAME="solides"
+
 print_line
-echo -e "  ${C}CLOUDFLARE TUNNEL SETUP  v$VERSION${NC}"
+echo -e "  ${C}CLOUDFLARE TUNNEL SETUP (LOGIN)  v$VERSION${NC}"
 print_line
 echo ""
-print_info "Verifikasi akses origin: pastikan dashboard Cloudflare sudah"
-print_info "men-set public hostname kamu → http://localhost:80"
+print_info "Alur: install cloudflared → login Cloudflare → buat tunnel →"
+print_info "buat subdomain otomatis → pasang service systemd."
 echo ""
 
-trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
-
-valid_token() {
-    case "$1" in
-        *[!A-Za-z0-9+/=_-]*) return 1 ;;
-    esac
-    [ "${#1}" -ge 20 ] || return 1
-    return 0
-}
-
-CF_TOKEN=$(trim "${1:-}")
-while [ -z "$CF_TOKEN" ]; do
-    read -s -p "  Paste tunnel token (dari Cloudflare dashboard): " CF_TOKEN </dev/tty
-    echo
-    CF_TOKEN=$(trim "$CF_TOKEN")
-    [ -n "$CF_TOKEN" ] || print_warn "Token tidak boleh kosong — coba lagi"
-done
-
-if ! valid_token "$CF_TOKEN"; then
-    print_warn "Token tampaknya tidak valid (harus string base64 dari Dashboard → Zero Trust → Networks → Tunnels)."
-    read -p "  Tetap lanjut? [y/N]: " CONT </dev/tty
-    [ "$CONT" = "y" ] || [ "$CONT" = "Y" ] || error_exit "Dibatalkan"
-fi
-
 print_line
-echo -e "  ${C}[1/4] Bersihkan repo apt Cloudflare yang rusak${NC}"
-print_line
-rm -f /etc/apt/sources.list.d/cloudflare-main.list /etc/apt/sources.list.d/cloudflare.list
-apt update -y || error_exit "apt update gagal"
-print_ok "apt siap"
-
-print_line
-echo -e "  ${C}[2/4] Install cloudflared${NC}"
+echo -e "  ${C}[1/5] Install cloudflared${NC}"
 print_line
 if command -v cloudflared >/dev/null 2>&1; then
     print_ok "cloudflared sudah terpasang"
@@ -88,26 +59,78 @@ else
 fi
 
 print_line
-echo -e "  ${C}[3/4] Install service tunnel${NC}"
+echo -e "  ${C}[2/5] Login Cloudflare${NC}"
 print_line
-if systemctl is-active --quiet cloudflared 2>/dev/null; then
-    print_ok "Cloudflare Tunnel sudah aktif"
+CERT_FILE="$HOME/.cloudflared/cert.pem"
+if [ -f "$CERT_FILE" ]; then
+    print_ok "Sudah login Cloudflare ($CERT_FILE)"
 else
-    cloudflared service uninstall >/dev/null 2>&1 || true
-    systemctl daemon-reload || true
-    cloudflared service install "$CF_TOKEN" \
-        || print_warn "service install gagal — jalankan manual: cloudflared service install <token>"
-    sleep 3
+    mkdir -p "$HOME/.cloudflared"
+    echo -e "  ${Y}Di layar akan muncul URL — buka di browser, login akun Cloudflare, lalu klik Allow/Authorize.${NC}"
+    cloudflared tunnel login || error_exit "Login Cloudflare gagal"
+    [ -f "$CERT_FILE" ] || error_exit "cert.pem tidak ditemukan setelah login"
+    print_ok "Login berhasil"
 fi
 
 print_line
-echo -e "  ${C}[4/4] Status${NC}"
+echo -e "  ${C}[3/5] Subdomain${NC}"
 print_line
+while true; do
+    read -p "  Subdomain (mis. solides.example.com): " DOMAIN </dev/tty
+    DOMAIN=$(echo "$DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+    if [[ "$DOMAIN" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
+        break
+    fi
+    print_warn "Subdomain tidak valid. Contoh: solides.example.com"
+done
+print_ok "Subdomain: $DOMAIN"
+
+print_line
+echo -e "  ${C}[4/5] Buat tunnel + DNS${NC}"
+print_line
+if cloudflared tunnel list | grep -qE "^[a-z0-9-]+[[:space:]]+$TUNNEL_NAME[[:space:]]"; then
+    print_ok "Tunnel '$TUNNEL_NAME' sudah ada"
+else
+    cloudflared tunnel create "$TUNNEL_NAME" || error_exit "Gagal buat tunnel"
+    print_ok "Tunnel '$TUNNEL_NAME' dibuat"
+fi
+UUID=$(cloudflared tunnel list | grep -E "^[a-z0-9-]+[[:space:]]+$TUNNEL_NAME[[:space:]]" | awk '{print $1}')
+[ -n "$UUID" ] || error_exit "Gagal mengambil UUID tunnel"
+
+cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" 2>/dev/null \
+    || print_warn "route dns gagal — pastikan $DOMAIN ada di zona Cloudflare yang sama"
+print_ok "DNS $DOMAIN → tunnel ($UUID.cfargotunnel.com)"
+
+print_line
+echo -e "  ${C}[5/5] Pasang service tunnel${NC}"
+print_line
+cloudflared service uninstall >/dev/null 2>&1 || true
+rm -rf /etc/cloudflared
+mkdir -p /etc/cloudflared
+cat > /etc/cloudflared/config.yml <<EOF
+tunnel: $TUNNEL_NAME
+credentials-file: $HOME/.cloudflared/$UUID.json
+
+ingress:
+  - hostname: $DOMAIN
+    service: http://localhost:80
+  - hostname: www.$DOMAIN
+    service: http://localhost:80
+  - service: http_status:404
+EOF
+print_ok "Konfigurasi /etc/cloudflared/config.yml ditulis"
+
+cloudflared --config /etc/cloudflared/config.yml service install \
+    || error_exit "service install gagal"
+systemctl enable cloudflared >/dev/null 2>&1 || true
+systemctl restart cloudflared
+sleep 3
+
 if systemctl is-active --quiet cloudflared; then
-    print_ok "Cloudflare Tunnel AKTIF"
+    print_ok "Cloudflare Tunnel AKTIF (service systemd)"
 else
     print_warn "Tunnel belum aktif — cek: sudo journalctl -u cloudflared -n 50"
 fi
 echo ""
-print_info "Buka https://DOMAIN_KAMU di browser untuk verifikasi."
+print_info "Verifikasi di browser: https://$DOMAIN"
 echo ""
