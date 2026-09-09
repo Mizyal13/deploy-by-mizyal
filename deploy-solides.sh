@@ -187,52 +187,21 @@ for MIG in "$WEB"/database/migration_*.sql; do
     fi
 done
 
-log_progress "  [9/14] Menyiapkan kredensial database aplikasi"
-if [ ! -f "$WEB/config/database.php" ]; then
-    cat > "$WEB/config/database.php" <<'PHPEOF'
-<?php
-
-$DB_HOST = getenv('DB_HOST') ?: 'localhost';
-$DB_USER = getenv('DB_USER') ?: 'root';
-$DB_PASS = getenv('DB_PASS') ?: '';
-$DB_NAME = getenv('DB_NAME') ?: 'spk_supplier';
-
-if (file_exists(__DIR__ . '/database.local.php')) {
-    require __DIR__ . '/database.local.php';
-}
-
-mysqli_report(MYSQLI_REPORT_OFF);
-$conn = mysqli_connect($DB_HOST, $DB_USER, $DB_PASS, $DB_NAME);
-
-if (!$conn) {
-    error_log('Koneksi database gagal: ' . mysqli_connect_error());
-    die('Koneksi database gagal. Periksa kembali konfigurasi database.');
-}
-
-mysqli_set_charset($conn, 'utf8mb4');
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-PHPEOF
-fi
-
-cat > "$WEB/config/database.local.php" <<PHPEOF
-<?php
-
-\$DB_HOST = 'localhost';
-\$DB_USER = '$DB_APP_USER';
-\$DB_PASS = '$DB_APP_PASS';
-\$DB_NAME = '$DB_NAME';
-PHPEOF
-chown root:root "$WEB/config/database.local.php"
-chmod 600 "$WEB/config/database.local.php"
-print_ok "kredensial DB ditulis ke config/database.local.php"
-
+log_progress "  [9/14] Menyiapkan kredensial database aplikasi (.env)"
 cat > "$WEB/.env" <<EOF
+APP_ENV=prod
+DB_HOST=localhost
+DB_USER=$DB_APP_USER
+DB_PASS=$DB_APP_PASS
+DB_NAME=$DB_NAME
 DB_ADMIN_USER=$DB_ADMIN_USER
 DB_ADMIN_PASS=$DB_ADMIN_PASS
 EOF
-chown root:root "$WEB/.env"
-chmod 600 "$WEB/.env"
-print_ok ".env berisi kredensial phpMyAdmin dibuat ($WEB/.env)"
+chown www-data:www-data "$WEB/.env"
+chmod 640 "$WEB/.env"
+print_ok ".env lengkap dibuat dan terbaca aplikasi ($WEB/.env)"
+# config/database.php sekarang ikut di-git (sumber konfigurasi dari .env),
+# jadi database.local.php TIDAK digunakan lagi.
 
 log_progress "  [10/14] Mengatur akun login SOLIDES"
 if mysql -u root -N -e "USE \`$DB_NAME\`; SELECT 1 FROM users LIMIT 1;" >/dev/null 2>&1; then
@@ -284,11 +253,10 @@ log_progress "  [12/14] Mengatur permission"
 chown -R www-data:www-data "$WEB"
 find "$WEB" -type d -exec chmod 755 {} \;
 find "$WEB" -type f -exec chmod 644 {} \;
-chown root:root "$WEB/.env"
-chmod 600 "$WEB/.env"
-chown root:root "$WEB/config/database.local.php"
-chmod 600 "$WEB/config/database.local.php"
-print_ok "Permission www-data diterapkan"
+# .env berisi kredensial → pemilik www-data (terbaca PHP-FPM), mode 640 (privasi).
+chown www-data:www-data "$WEB/.env"
+chmod 640 "$WEB/.env"
+print_ok "Permission www-data diterapkan (.env mode 640)"
 
 log_progress "  [13/14] Menginstall phpMyAdmin"
 echo "phpmyadmin phpmyadmin/dbconfig-install boolean false" | debconf-set-selections
@@ -367,10 +335,10 @@ cat > "$CREDS_FILE" <<EOF
    Login admin : admin / $APP_ADMIN_PASS
    Login pimp  : pimpinan / $APP_PIMPINAN_PASS
 
- Database Aplikasi (ter-set di config/database.local.php)
-   Nama DB     : $DB_NAME
-   User App    : $DB_APP_USER
-   Password App: $DB_APP_PASS
+ Database Aplikasi (ter-set di $WEB/.env)
+    Nama DB     : $DB_NAME
+    User App    : $DB_APP_USER
+    Password App: $DB_APP_PASS
 
  phpMyAdmin (kelola DB & user via browser)
    URL pma     : $PMA_URL
@@ -399,7 +367,7 @@ echo -e "  ${BG}║${NC}  User     : $DB_ADMIN_USER"
 echo -e "  ${BG}║${NC}  Password : $DB_ADMIN_PASS"
 echo -e "  ${BG}║${NC}"
 echo -e "  ${BG}║${NC}  DB App   : ${DB_NAME} (${DB_APP_USER})"
-echo -e "  ${BG}║${NC}  .env     : $WEB/.env (phpMyAdmin creds)"
+echo -e "  ${BG}║${NC}  .env     : $WEB/.env (konfigurasi app & phpMyAdmin)"
 echo -e "  ${BG}║${NC}  Kredensial tersimpan di: $CREDS_FILE"
 echo -e "  ${BG}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""

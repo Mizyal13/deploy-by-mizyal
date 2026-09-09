@@ -56,7 +56,9 @@ Script hanya meminta **domain** yang sudah di-setup di menu 9. Tidak ada urusan 
 sudo bash update-solides.sh
 ```
 
-Menarik code terbaru tanpa merusak `config/database.local.php` (kredensial server), memperbaiki permission, dan menawarkan reset DB (opsional — `init.sql` menghapus semua data).
+Menarik code terbaru otomatis (tanpa reset). Kredensial dibackup lalu ditulis ulang ke `.env`
+(satu-satunya sumber konfigurasi — `database.local.php` tidak dipakai lagi), permission diperbaiki
+(`.env` dibaca `www-data`, mode 640), dan menawarkan reset DB opsional.
 
 ## File Script
 

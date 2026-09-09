@@ -49,29 +49,36 @@ info_lines() {
 
 info_lines "  BACKUP KREDENSIAL"
 LOCAL_DB_CONFIG="$WEB/config/database.local.php"
-DB_HOST="localhost"
-DB_USER=""
-DB_PASS=""
-DB_NAME=""
-if [ -f "$LOCAL_DB_CONFIG" ]; then
-    DB_HOST=$(grep -oP "(?<=\\\$DB_HOST = ')[^']*" "$LOCAL_DB_CONFIG")
+ENV_FILE="$WEB/.env"
+
+# Ambil nilai DB dari .env; fallback ke database.local.php (server lama) untuk transisi.
+read_env() {
+    grep -oP "(?<=\b$1=)[^[:space:]]*" "$ENV_FILE" 2>/dev/null | head -1
+}
+DB_HOST=$(read_env DB_HOST)
+DB_USER=$(read_env DB_USER)
+DB_PASS=$(read_env DB_PASS)
+DB_NAME=$(read_env DB_NAME)
+DB_ADMIN_USER=$(read_env DB_ADMIN_USER)
+DB_ADMIN_PASS=$(read_env DB_ADMIN_PASS)
+
+if [ -z "$DB_USER" ] && [ -f "$LOCAL_DB_CONFIG" ]; then
+    echo -e "  ${Y}[WARN]${NC} .env belum berisi DB_* — ambil dari database.local.php (server lama)"
+    DB_HOST="${DB_HOST:-$(grep -oP "(?<=\\\$DB_HOST = ')[^']*" "$LOCAL_DB_CONFIG")}"
     DB_USER=$(grep -oP "(?<=\\\$DB_USER = ')[^']*" "$LOCAL_DB_CONFIG")
     DB_PASS=$(grep -oP "(?<=\\\$DB_PASS = ')[^']*" "$LOCAL_DB_CONFIG")
     DB_NAME=$(grep -oP "(?<=\\\$DB_NAME = ')[^']*" "$LOCAL_DB_CONFIG")
-elif [ -f "$DB_CONFIG" ]; then
-    DB_USER=$(grep -oP "(?<=\\\$user = \")[^\"]*" "$DB_CONFIG" 2>/dev/null || echo "")
-    DB_PASS=$(grep -oP "(?<=\\\$pass = \")[^\"]*" "$DB_CONFIG" 2>/dev/null || echo "")
-    DB_NAME=$(grep -oP "(?<=\\\$db   = \")[^\"]*" "$DB_CONFIG" 2>/dev/null || echo "")
 fi
-[ -n "$DB_USER" ] || error_exit "Gagal membaca user dari $LOCAL_DB_CONFIG / $DB_CONFIG"
-[ -n "$DB_PASS" ] || error_exit "Gagal membaca password dari $LOCAL_DB_CONFIG / $DB_CONFIG"
+[ -n "$DB_USER" ] || error_exit "Gagal membaca DB_USER dari $ENV_FILE / $LOCAL_DB_CONFIG"
+[ -n "$DB_PASS" ] || print_warn "DB_PASS kosong — cek isi .env"
+DB_NAME="${DB_NAME:-spk_supplier}"
 print_ok "Kredensial DB dibackup (user=$DB_USER, db=$DB_NAME)"
 
 if [ -f "$ENV_FILE" ]; then
-    cp "$ENV_FILE" /root/${PROJECT_NAME}-env.backup
+    cp "$ENV_FILE" "/root/${PROJECT_NAME}-env.backup"
     print_ok ".env dibackup ke /root/${PROJECT_NAME}-env.backup"
 else
-    print_warn ".env tidak ditemukan, akan dibuat ulang dari template"
+    print_warn ".env tidak ditemukan, akan dibuat dari nilai terbaca"
 fi
 
 info_lines "  BACKUP DATABASE (otomatis)"
@@ -95,48 +102,27 @@ NEW_COMMIT=$(git rev-parse --short HEAD)
 print_ok "Sekarang di commit $NEW_COMMIT ($GIT_BRANCH)"
 
 info_lines "  RESTORE KREDENSIAL"
-mkdir -p "$WEB/config"
-if [ ! -f "$DB_CONFIG" ]; then
-    cat > "$DB_CONFIG" <<'PHPEOF'
-<?php
-
-$DB_HOST = getenv('DB_HOST') ?: 'localhost';
-$DB_USER = getenv('DB_USER') ?: 'root';
-$DB_PASS = getenv('DB_PASS') ?: '';
-$DB_NAME = getenv('DB_NAME') ?: 'spk_supplier';
-
-if (file_exists(__DIR__ . '/database.local.php')) {
-    require __DIR__ . '/database.local.php';
-}
-
-mysqli_report(MYSQLI_REPORT_OFF);
-$conn = mysqli_connect($DB_HOST, $DB_USER, $DB_PASS, $DB_NAME);
-
-if (!$conn) {
-    error_log('Koneksi database gagal: ' . mysqli_connect_error());
-    die('Koneksi database gagal. Periksa kembali konfigurasi database.');
-}
-
-mysqli_set_charset($conn, 'utf8mb4');
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-PHPEOF
-    print_ok "config/database.php dibuat dari template"
+# config/database.php sekarang ikut di-git (sumber dari .env), jadi database.local.php
+# TIDAK digunakan lagi. Kredensial disimpan penuh di .env.
+DB_HOST="${DB_HOST:-localhost}"
+DB_NAME="${DB_NAME:-spk_supplier}"
+# DB_ADMIN_* fallback dari backup .env bila .env lama tak punya.
+if [ -z "$DB_ADMIN_USER" ] && [ -f "/root/${PROJECT_NAME}-env.backup" ]; then
+    DB_ADMIN_USER=$(grep -oP "(?<=\bDB_ADMIN_USER=)[^[:space:]]*" "/root/${PROJECT_NAME}-env.backup" | head -1)
+    DB_ADMIN_PASS=$(grep -oP "(?<=\bDB_ADMIN_PASS=)[^[:space:]]*" "/root/${PROJECT_NAME}-env.backup" | head -1)
 fi
 
-cat > "$LOCAL_DB_CONFIG" <<PHPEOF
-<?php
-
-\$DB_HOST = '$DB_HOST';
-\$DB_USER = '$DB_USER';
-\$DB_PASS = '$DB_PASS';
-\$DB_NAME = '$DB_NAME';
-PHPEOF
-print_ok "config/database.local.php dipulihkan"
-
-if [ ! -f "$ENV_FILE" ] && [ -f "/root/${PROJECT_NAME}-env.backup" ]; then
-    cp "/root/${PROJECT_NAME}-env.backup" "$ENV_FILE"
-    print_ok ".env dipulihkan"
-fi
+cat > "$ENV_FILE" <<EOF
+APP_ENV=prod
+DB_HOST=$DB_HOST
+DB_USER=$DB_USER
+DB_PASS=$DB_PASS
+DB_NAME=$DB_NAME
+DB_ADMIN_USER=${DB_ADMIN_USER:-}
+DB_ADMIN_PASS=${DB_ADMIN_PASS:-}
+EOF
+rm -f "$LOCAL_DB_CONFIG"
+print_ok ".env dibangun ulang dengan kredensial ($DB_NAME / $DB_USER)"
 
 info_lines "  MIGRASI DATABASE (OTOMATIS, TANPA RESET)"
 mysql -u root "$DB_NAME" -e "CREATE TABLE IF NOT EXISTS schema_migrations (id INT AUTO_INCREMENT PRIMARY KEY, filename VARCHAR(255) UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || print_warn "Tabel schema_migrations gagal dibuat, tetap lanjut"
@@ -159,9 +145,10 @@ info_lines "  PERMISSION"
 chown -R www-data:www-data "$WEB"
 find "$WEB" -type d -exec chmod 755 {} \;
 find "$WEB" -type f -exec chmod 644 {} \;
-chown root:root "$LOCAL_DB_CONFIG" "$DB_CONFIG" "$ENV_FILE" 2>/dev/null || true
-chmod 600 "$LOCAL_DB_CONFIG" "$DB_CONFIG" "$ENV_FILE" 2>/dev/null || true
-print_ok "Permission diterapkan"
+# .env berisi kredensial → pemilik www-data (terbaca PHP-FPM), mode 640 (privasi).
+chown www-data:www-data "$ENV_FILE" 2>/dev/null || true
+chmod 640 "$ENV_FILE" 2>/dev/null || true
+print_ok "Permission diterapkan (.env mode 640, pemilik www-data)"
 
 if [ -f "$WEB/database/init.sql" ]; then
     info_lines "  UPDATE DATABASE (OPSIONAL)"
