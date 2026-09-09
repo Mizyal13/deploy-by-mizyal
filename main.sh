@@ -6,7 +6,7 @@ VERSION="2.0"
 SCRIPT_URL="https://raw.githubusercontent.com/mizyal13/deploy-by-mizyal/main"
 INSTALL_DIR="/opt/deploy-by-mizyal"
 GLOBAL_CMD="/usr/local/bin/deploybymizyal"
-SCRIPTS="main.sh install.sh projectadd.sh projectremove.sh fullremove.sh diagnostics.sh"
+SCRIPTS="main.sh install.sh projectadd.sh projectremove.sh fullremove.sh diagnostics.sh deploy-solides.sh update-solides.sh"
 
 G='\033[0;32m'
 BG='\033[1;32m'
@@ -97,12 +97,14 @@ while true; do
     echo -e "  ${BG}4${NC}. Server Status"
     echo -e "  ${BG}5${NC}. Diagnostics"
     echo -e "  ${BG}6${NC}. Full Reset"
-    echo -e "  ${BG}7${NC}. Update Scripts"
+    echo -e "  ${BG}7${NC}. Deploy SOLIDES"
+    echo -e "  ${BG}8${NC}. Update SOLIDES"
+    echo -e "  ${BG}9${NC}. Update Scripts"
     echo ""
-    echo -e "  ${R}8${NC}. Exit"
+    echo -e "  ${R}10${NC}. Exit"
     echo ""
     print_line
-    read -p "  Choose [1-8]: " CHOICE </dev/tty
+    read -p "  Choose [1-10]: " CHOICE </dev/tty
 
     case "$CHOICE" in
         1) bash "$INSTALL_DIR/install.sh" ;;
@@ -111,7 +113,9 @@ while true; do
         4) bash "$INSTALL_DIR/diagnostics.sh" --status ;;
         5) bash "$INSTALL_DIR/diagnostics.sh" --full ;;
         6) bash "$INSTALL_DIR/fullremove.sh" ;;
-        7)
+        7) bash "$INSTALL_DIR/deploy-solides.sh" ;;
+        8) bash "$INSTALL_DIR/update-solides.sh" ;;
+        9)
             echo ""
             echo -e "  ${C}Updating scripts...${NC}"
             for SCRIPT in $SCRIPTS; do
@@ -122,7 +126,7 @@ while true; do
             echo ""
             echo -e "  ${BG}All updated!${NC}"
             ;;
-        8)
+        10)
             clear
             echo -e "\n  ${BG}Goodbye!${NC}\n"
             break
@@ -131,5 +135,5 @@ while true; do
             echo -e "  ${Y}Invalid choice. Try again.${NC}"
             ;;
     esac
-    [ "$CHOICE" != "8" ] && read -p "  Press Enter to return to menu..." </dev/tty
+    [ "$CHOICE" != "10" ] && read -p "  Press Enter to return to menu..." </dev/tty
 done
