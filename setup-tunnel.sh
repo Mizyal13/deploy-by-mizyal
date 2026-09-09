@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-VERSION="2.1"
+VERSION="2.2"
 
 G='\033[0;32m'
 BG='\033[1;32m'
@@ -75,7 +75,20 @@ fi
 print_line
 echo -e "  ${C}[3/5] Subdomain${NC}"
 print_line
-EXISTING_DOMAIN=$(grep -h 'hostname:' /etc/cloudflared/config.yml 2>/dev/null | awk '{print $2}' | grep -v '^www\.' | head -1 || true)
+DOMAIN_RE='^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$'
+EXISTING_DOMAIN=""
+if [ -f /etc/cloudflared/config.yml ]; then
+    CANDIDATE=$(grep 'hostname:' /etc/cloudflared/config.yml 2>/dev/null | awk '/hostname:/{print $3}' | grep -v '^www\.' | head -1 | xargs || true)
+    if [[ "$CANDIDATE" =~ $DOMAIN_RE ]]; then
+        EXISTING_DOMAIN=$CANDIDATE
+    fi
+fi
+if [ -z "$EXISTING_DOMAIN" ] && [ -f /etc/apache2/sites-available/solides.conf ]; then
+    CANDIDATE=$(awk '/ServerName/{print $2; exit}' /etc/apache2/sites-available/solides.conf 2>/dev/null | xargs || true)
+    if [[ "$CANDIDATE" =~ $DOMAIN_RE ]]; then
+        EXISTING_DOMAIN=$CANDIDATE
+    fi
+fi
 if [ -n "$EXISTING_DOMAIN" ]; then
     DOMAIN=$(echo "$EXISTING_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
     print_ok "Subdomain dari konfigurasi lama: $DOMAIN"
@@ -140,7 +153,8 @@ print_ok "Konfigurasi /etc/cloudflared/config.yml ditulis"
 SRV_NAME="_v2-origintunneld._tcp.argotunnel.com"
 IFACE=$(ip -o -4 route show to default 2>/dev/null | awk '{print $5}')
 
-fix_dns_persistent() {
+force_dns_cloudflare() {
+    systemctl enable --now systemd-resolved >/dev/null 2>&1 || true
     grep -q '^\[Resolve\]' /etc/systemd/resolved.conf || printf '\n[Resolve]\n' >> /etc/systemd/resolved.conf
     sed -i 's/^#\?DNS=.*/DNS=1.1.1.1 1.0.0.1/' /etc/systemd/resolved.conf
     sed -i 's/^#\?FallbackDNS=.*/FallbackDNS=8.8.8.8 8.8.4.4/' /etc/systemd/resolved.conf
@@ -149,27 +163,37 @@ fix_dns_persistent() {
     grep -q '^FallbackDNS=' /etc/systemd/resolved.conf || echo 'FallbackDNS=8.8.8.8 8.8.4.4' >> /etc/systemd/resolved.conf
     grep -q '^Domains=' /etc/systemd/resolved.conf || echo 'Domains=~.' >> /etc/systemd/resolved.conf
     systemctl restart systemd-resolved 2>/dev/null || true
-    [ -n "$IFACE" ] && resolvectl dns "$IFACE" 1.1.1.1 1.0.0.1 2>/dev/null || true
+    ln -sfn /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
+    if [ -n "$IFACE" ]; then
+        resolvectl dns "$IFACE" 1.1.1.1 1.0.0.1 2>/dev/null || true
+        resolvectl domain "$IFACE" '~.' 2>/dev/null || true
+        resolvectl default-route "$IFACE" true 2>/dev/null || true
+    fi
     resolvectl flush-caches 2>/dev/null || true
+    if ! command -v resolvectl >/dev/null 2>&1 || [ ! -S /run/systemd/resolve/io.systemd.Resolve ]; then
+        printf 'nameserver 1.1.1.1\nnameserver 1.0.0.1\n' > /etc/resolv.conf
+    fi
 }
 
-ensure_srv() {
+count_srv() {
     command -v dig >/dev/null 2>&1 || apt install -y dnsutils >/dev/null 2>&1 || true
     local COUNT
-    COUNT=$(dig +short SRV "$SRV_NAME" 2>/dev/null | grep -c '^' || true)
-    [ "${COUNT:-0}" -ge 2 ]
+    COUNT=$(dig +short +tries=2 +time=3 SRV "$SRV_NAME" 2>/dev/null | grep -c '^' || true)
+    echo "${COUNT:-0}"
 }
 
-if ensure_srv; then
-    print_ok "DNS SRV Cloudflare OK (resolver lokal)"
+print_warn "Samakan resolver sistem dengan 1.1.1.1 (dipakai cloudflared) — permanen"
+force_dns_cloudflare
+
+SRV_COUNT=$(count_srv)
+if [ "${SRV_COUNT:-0}" -ge 2 ]; then
+    print_ok "DNS SRV Cloudflare OK ($SRV_COUNT record via 1.1.1.1)"
 else
-    print_warn "Resolver lokal mengembalikan <2 record SRV — ganti DNS ke 1.1.1.1 (permanen)"
-    fix_dns_persistent
-    if ensure_srv; then
-        print_ok "SRV OK setelah ganti DNS (tersimpan permanen)"
-    else
-        print_warn "SRV tetap <2 — tunnel berpotensi gagal start; cek firewall/network outbound"
-    fi
+    print_warn "SRV Cloudflare cuma $SRV_COUNT record dari 1.1.1.1 — diagnosa:"
+    echo -e "  ${DG}cat /etc/resolv.conf${NC}"
+    echo -e "  ${DG}resolvectl status | grep -A4 'Current DNS'${NC}"
+    echo -e "  ${DG}dig +short SRV $SRV_NAME${NC}"
+    print_warn "Cloudflare butuh >=2 record SRV. Cek: router/modem balik NAT sering menyaring SRV — set DNS 1.1.1.1 di panel router, atau coba lagi beberapa kali."
 fi
 
 if cloudflared --config /etc/cloudflared/config.yml service install; then
