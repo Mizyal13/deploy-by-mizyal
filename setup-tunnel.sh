@@ -40,12 +40,29 @@ print_info "Verifikasi akses origin: pastikan dashboard Cloudflare sudah"
 print_info "men-set public hostname kamu → http://localhost:80"
 echo ""
 
-CF_TOKEN="${1:-}"
-if [ -z "$CF_TOKEN" ]; then
+trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+valid_token() {
+    case "$1" in
+        *[!A-Za-z0-9+/=_-]*) return 1 ;;
+    esac
+    [ "${#1}" -ge 20 ] || return 1
+    return 0
+}
+
+CF_TOKEN=$(trim "${1:-}")
+while [ -z "$CF_TOKEN" ]; do
     read -s -p "  Paste tunnel token (dari Cloudflare dashboard): " CF_TOKEN </dev/tty
     echo
+    CF_TOKEN=$(trim "$CF_TOKEN")
+    [ -n "$CF_TOKEN" ] || print_warn "Token tidak boleh kosong — coba lagi"
+done
+
+if ! valid_token "$CF_TOKEN"; then
+    print_warn "Token tampaknya tidak valid (harus string base64 dari Dashboard → Zero Trust → Networks → Tunnels)."
+    read -p "  Tetap lanjut? [y/N]: " CONT </dev/tty
+    [ "$CONT" = "y" ] || [ "$CONT" = "Y" ] || error_exit "Dibatalkan"
 fi
-[ -n "$CF_TOKEN" ] || error_exit "Token kosong"
 
 print_line
 echo -e "  ${C}[1/4] Bersihkan repo apt Cloudflare yang rusak${NC}"
