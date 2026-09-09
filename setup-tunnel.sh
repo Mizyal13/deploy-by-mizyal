@@ -120,6 +120,34 @@ ingress:
 EOF
 print_ok "Konfigurasi /etc/cloudflared/config.yml ditulis"
 
+SRV_NAME="_v2-origintunneld._tcp.argotunnel.com"
+IFACE=$(ip -o -4 route show to default 2>/dev/null | awk '{print $5}')
+
+ensure_srv() {
+    command -v dig >/dev/null 2>&1 || apt install -y dnsutils >/dev/null 2>&1 || true
+    local COUNT
+    COUNT=$(dig +short SRV "$SRV_NAME" 2>/dev/null | grep -c '^' || true)
+    [ "${COUNT:-0}" -ge 2 ]
+}
+
+if ensure_srv; then
+    print_ok "DNS SRV Cloudflare OK (resolver lokal)"
+else
+    print_warn "Resolver lokal hanya mengembalikan <2 record SRV — mengganti DNS ke 1.1.1.1"
+    if [ -n "$IFACE" ]; then
+        if resolvectl dns "$IFACE" 1.1.1.1 1.0.0.1 2>/dev/null && resolvectl flush-caches 2>/dev/null; then
+            print_ok "DNS sistem diubah ke 1.1.1.1 (interface $IFACE)"
+        else
+            print_warn "Gagal ubah DNS otomatis — jalankan manual: resolvectl dns $IFACE 1.1.1.1 1.0.0.1"
+        fi
+    fi
+    if ensure_srv; then
+        print_ok "SRV OK setelah ganti DNS"
+    else
+        print_warn "SRV tetap <2 — tunnel berpotensi gagal start"
+    fi
+fi
+
 if cloudflared --config /etc/cloudflared/config.yml service install; then
     print_ok "Service terpasang"
 else
