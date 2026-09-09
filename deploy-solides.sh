@@ -341,13 +341,14 @@ print_info "Memasang Cloudflare Tunnel (token)..."
 if command -v cloudflared >/dev/null 2>&1; then
     print_ok "cloudflared sudah terpasang"
 else
-    apt install -y curl gpg || true
-    curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
-        | gpg --dearmor --yes -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg 2>/dev/null || true
-    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflare main" \
-        > /etc/apt/sources.list.d/cloudflare-main.list
-    apt update -y || true
-    apt install -y cloudflared || error_exit "Gagal install cloudflared"
+    rm -f /etc/apt/sources.list.d/cloudflare-main.list
+    CF_DEB="cloudflared-linux-arm64.deb"
+    [ "$(dpkg --print-architecture)" = "amd64" ] && CF_DEB="cloudflared-linux-amd64.deb"
+    curl -fsSL -o /tmp/cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/$CF_DEB" \
+        && apt install -y /tmp/cloudflared.deb >/dev/null 2>&1 \
+        && rm -f /tmp/cloudflared.deb
+    command -v cloudflared >/dev/null \
+        || error_exit "Gagal install cloudflared — cek koneksi ke GitHub (tidak pakai username/password GitHub)"
 fi
 
 echo ""
