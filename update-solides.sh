@@ -76,7 +76,7 @@ fi
 
 info_lines "  GIT FETCH + RESET KE $GIT_BRANCH"
 cd "$WEB"
-git fetch origin || error_exit "git fetch gagal — cek koneksi/repo"
+GIT_TERMINAL_PROMPT=0 git fetch origin || error_exit "git fetch gagal — cek koneksi/repo (tidak pakai username/password GitHub)"
 git reset --hard "origin/$GIT_BRANCH" || error_exit "git reset gagal"
 NEW_COMMIT=$(git rev-parse --short HEAD)
 print_ok "Sekarang di commit $NEW_COMMIT ($GIT_BRANCH)"

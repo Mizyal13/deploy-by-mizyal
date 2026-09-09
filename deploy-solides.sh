@@ -148,7 +148,7 @@ mysqladmin ping >/dev/null 2>&1 || error_exit "MySQL tidak bisa dijalankan"
 log_progress "  [6/14] Mengunduh project SOLIDES"
 mkdir -p /var/www
 rm -rf "$WEB"
-git clone --branch "$GIT_BRANCH" --depth 1 "$GIT_REPO" "$WEB" || error_exit "Git clone failed"
+GIT_TERMINAL_PROMPT=0 git clone --branch "$GIT_BRANCH" --depth 1 "$GIT_REPO" "$WEB" || error_exit "Git clone failed (repo harus publik — tidak pakai username/password GitHub)"
 print_ok "Project cloned to $WEB"
 
 log_progress "  [7/14] Membuat database & user MySQL"
