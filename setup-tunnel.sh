@@ -108,7 +108,7 @@ cloudflared service uninstall >/dev/null 2>&1 || true
 rm -rf /etc/cloudflared
 mkdir -p /etc/cloudflared
 cat > /etc/cloudflared/config.yml <<EOF
-tunnel: $TUNNEL_NAME
+tunnel: $UUID
 credentials-file: $HOME/.cloudflared/$UUID.json
 
 ingress:
@@ -120,8 +120,13 @@ ingress:
 EOF
 print_ok "Konfigurasi /etc/cloudflared/config.yml ditulis"
 
-cloudflared --config /etc/cloudflared/config.yml service install \
-    || error_exit "service install gagal"
+if cloudflared --config /etc/cloudflared/config.yml service install; then
+    print_ok "Service terpasang"
+else
+    print_warn "Service gagal start — log terakhir:"
+    journalctl -u cloudflared --no-pager -n 20 2>/dev/null || true
+    error_exit "Lihat log di atas, atau: sudo journalctl -u cloudflared -n 50"
+fi
 systemctl enable cloudflared >/dev/null 2>&1 || true
 systemctl restart cloudflared
 sleep 3
