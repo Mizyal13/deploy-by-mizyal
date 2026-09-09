@@ -75,14 +75,20 @@ fi
 print_line
 echo -e "  ${C}[3/5] Subdomain${NC}"
 print_line
-while true; do
-    read -p "  Subdomain (mis. solides.example.com): " DOMAIN </dev/tty
-    DOMAIN=$(echo "$DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
-    if [[ "$DOMAIN" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
-        break
-    fi
-    print_warn "Subdomain tidak valid. Contoh: solides.example.com"
-done
+EXISTING_DOMAIN=$(grep -h 'hostname:' /etc/cloudflared/config.yml 2>/dev/null | awk '{print $2}' | grep -v '^www\.' | head -1)
+if [ -n "$EXISTING_DOMAIN" ]; then
+    DOMAIN=$(echo "$EXISTING_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+    print_ok "Subdomain dari konfigurasi lama: $DOMAIN"
+else
+    while true; do
+        read -p "  Subdomain (mis. solides.example.com): " DOMAIN </dev/tty
+        DOMAIN=$(echo "$DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
+        if [[ "$DOMAIN" =~ ^[a-z0-9.-]+\.[a-z]{2,}$ ]]; then
+            break
+        fi
+        print_warn "Subdomain tidak valid. Contoh: solides.example.com"
+    done
+fi
 print_ok "Subdomain: $DOMAIN"
 
 print_line
@@ -123,6 +129,19 @@ print_ok "Konfigurasi /etc/cloudflared/config.yml ditulis"
 SRV_NAME="_v2-origintunneld._tcp.argotunnel.com"
 IFACE=$(ip -o -4 route show to default 2>/dev/null | awk '{print $5}')
 
+fix_dns_persistent() {
+    grep -q '^\[Resolve\]' /etc/systemd/resolved.conf || printf '\n[Resolve]\n' >> /etc/systemd/resolved.conf
+    sed -i 's/^#\?DNS=.*/DNS=1.1.1.1 1.0.0.1/' /etc/systemd/resolved.conf
+    sed -i 's/^#\?FallbackDNS=.*/FallbackDNS=8.8.8.8 8.8.4.4/' /etc/systemd/resolved.conf
+    sed -i 's/^#\?Domains=.*/Domains=~./' /etc/systemd/resolved.conf
+    grep -q '^DNS=' /etc/systemd/resolved.conf || echo 'DNS=1.1.1.1 1.0.0.1' >> /etc/systemd/resolved.conf
+    grep -q '^FallbackDNS=' /etc/systemd/resolved.conf || echo 'FallbackDNS=8.8.8.8 8.8.4.4' >> /etc/systemd/resolved.conf
+    grep -q '^Domains=' /etc/systemd/resolved.conf || echo 'Domains=~.' >> /etc/systemd/resolved.conf
+    systemctl restart systemd-resolved 2>/dev/null || true
+    [ -n "$IFACE" ] && resolvectl dns "$IFACE" 1.1.1.1 1.0.0.1 2>/dev/null || true
+    resolvectl flush-caches 2>/dev/null || true
+}
+
 ensure_srv() {
     command -v dig >/dev/null 2>&1 || apt install -y dnsutils >/dev/null 2>&1 || true
     local COUNT
@@ -133,18 +152,12 @@ ensure_srv() {
 if ensure_srv; then
     print_ok "DNS SRV Cloudflare OK (resolver lokal)"
 else
-    print_warn "Resolver lokal hanya mengembalikan <2 record SRV — mengganti DNS ke 1.1.1.1"
-    if [ -n "$IFACE" ]; then
-        if resolvectl dns "$IFACE" 1.1.1.1 1.0.0.1 2>/dev/null && resolvectl flush-caches 2>/dev/null; then
-            print_ok "DNS sistem diubah ke 1.1.1.1 (interface $IFACE)"
-        else
-            print_warn "Gagal ubah DNS otomatis — jalankan manual: resolvectl dns $IFACE 1.1.1.1 1.0.0.1"
-        fi
-    fi
+    print_warn "Resolver lokal mengembalikan <2 record SRV — ganti DNS ke 1.1.1.1 (permanen)"
+    fix_dns_persistent
     if ensure_srv; then
-        print_ok "SRV OK setelah ganti DNS"
+        print_ok "SRV OK setelah ganti DNS (tersimpan permanen)"
     else
-        print_warn "SRV tetap <2 — tunnel berpotensi gagal start"
+        print_warn "SRV tetap <2 — tunnel berpotensi gagal start; cek firewall/network outbound"
     fi
 fi
 
