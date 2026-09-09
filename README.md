@@ -1,50 +1,38 @@
-# Deploy by Mizyal
+# Deploy SOLIDES
 
-Script deployment otomatis untuk fresh Ubuntu server. Tinggal jalanin scriptnya, server langsung siap deploy website PHP. Support Laravel, Composer, dan PHP native.
+Script deployment SOLIDES (native PHP + MySQLi, AHP supplier) di fresh Ubuntu server. Repo: `https://github.com/hanafi0508/SPKSOLIDES.git`.
 
 ## Cara Pakai
 
- langsung jalanin ini di server:
+**Deploy pertama** (di server, sebagai root):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mizyal13/deploy-by-mizyal/main/main.sh | sudo bash
+sudo bash deploy-solides.sh
 ```
 
-abis itu kalau mau akses lagi tinggal ketik:
+Saat diminta, isi **domain** yang sudah DNS-only (grey cloud) ke IP server. Kredensial dibuat otomatis, tampil di akhir, dan disimpan di `/root/solides-credentials.txt`.
+
+**Setelah ada perubahan code** (commit & push baru di GitHub), jalankan di server:
 
 ```bash
-deploybymizyal
+sudo bash update-solides.sh
 ```
 
-## Fitur
+Bagian ini menarik code terbaru tanpa me-rusak `config/database.local.php` (kredensial server), memperbaiki permission, dan menawarkan reset DB (opsional, hati-hati: `init.sql` menghapus semua data).
 
-- Install Apache2, PHP (sama extensionnya), MySQL, Composer
-- Clone project dari Git langsung ke /var/www/
-- Buat database + user otomatis
-- Config Apache VirtualHost sama PHP-FPM
-- Auto detect framework (Laravel / Composer / PHP Native)
-- Setup UFW firewall sama fail2ban
-- SSL gratis via Certbot (kalau pilih domain)
-- Bisa bikin akun admin pas deployment (bcrypt/md5/plain)
+## File Script
 
-## Script Yang Ada
+| File | Fungsi |
+|------|--------|
+| `deploy-solides.sh` | Install server (Apache, PHP-FPM, MySQL, phpMyAdmin, UFW, fail2ban, SSL) + deploy pertama SOLIDES |
+| `update-solides.sh` | Update project di server ke commit terbaru dari GitHub + restore kredensial + permission |
 
-| Script | Fungsi |
-|--------|--------|
-| `main.sh` | Menu utama, akses semua fitur |
-| `install.sh` | Install server fresh + project pertama |
-| `projectadd.sh` | Tambah project baru di server yang udah ada |
-| `projectremove.sh` | Hapus project |
-| `fullremove.sh` | Reset server balik ke fresh Ubuntu |
-| `diagnostics.sh` | Cek status server + error scanner |
+## Env Override (opsional)
 
-## Yang Dibutuhin
-
-- Ubuntu 20.04 ke atas (fresh install)
-- Akses root
-- URL repository Git project lu
-
-## Udah Di Test Di
-
-- Ubuntu 20.04, 22.04, 24.04, 26.04
-- AMD64 sama ARM64
+| Env | Default |
+|-----|---------|
+| `SOLIDES_DB_NAME` | `spk_supplier` |
+| `SOLIDES_DB_USER` | `solides` |
+| `SOLIDES_DB_ADMIN_USER` | `solides_admin` |
+| `SOLIDES_GIT_REPO` | `https://github.com/hanafi0508/SPKSOLIDES.git` |
+| `SOLIDES_GIT_BRANCH` | `main` |
