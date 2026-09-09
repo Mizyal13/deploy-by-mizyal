@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-VERSION="2.0"
+VERSION="2.1"
 
 G='\033[0;32m'
 BG='\033[1;32m'
@@ -75,7 +75,7 @@ fi
 print_line
 echo -e "  ${C}[3/5] Subdomain${NC}"
 print_line
-EXISTING_DOMAIN=$(grep -h 'hostname:' /etc/cloudflared/config.yml 2>/dev/null | awk '{print $2}' | grep -v '^www\.' | head -1)
+EXISTING_DOMAIN=$(grep -h 'hostname:' /etc/cloudflared/config.yml 2>/dev/null | awk '{print $2}' | grep -v '^www\.' | head -1 || true)
 if [ -n "$EXISTING_DOMAIN" ]; then
     DOMAIN=$(echo "$EXISTING_DOMAIN" | sed 's|^https\?://||; s|/.*$||' | tr '[:upper:]' '[:lower:]')
     print_ok "Subdomain dari konfigurasi lama: $DOMAIN"
@@ -94,6 +94,9 @@ print_ok "Subdomain: $DOMAIN"
 print_line
 echo -e "  ${C}[4/5] Buat tunnel + DNS${NC}"
 print_line
+cloudflared service uninstall >/dev/null 2>&1 || true
+rm -rf /etc/cloudflared
+mkdir -p /etc/cloudflared
 if cloudflared tunnel list | grep -qE "^[a-z0-9-]+[[:space:]]+$TUNNEL_NAME[[:space:]]"; then
     print_ok "Tunnel '$TUNNEL_NAME' sudah ada"
 else
@@ -103,6 +106,11 @@ fi
 UUID=$(cloudflared tunnel list | grep -E "^[a-z0-9-]+[[:space:]]+$TUNNEL_NAME[[:space:]]" | awk '{print $1}')
 [ -n "$UUID" ] || error_exit "Gagal mengambil UUID tunnel"
 
+DOMAIN_PARTS=$(echo "$DOMAIN" | tr '.' '\n' | grep -c '^[[:alnum:]-]\+$' || true)
+if [ "${DOMAIN_PARTS:-0}" -le 3 ]; then
+    cloudflared tunnel route dns "$TUNNEL_NAME" "www.$DOMAIN" >/dev/null 2>&1 \
+        || print_warn "route dns www.$DOMAIN tidak dibutuhkan/ditemukan, diabaikan"
+fi
 cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" 2>/dev/null \
     || print_warn "route dns gagal — pastikan $DOMAIN ada di zona Cloudflare yang sama"
 print_ok "DNS $DOMAIN → tunnel ($UUID.cfargotunnel.com)"
@@ -110,9 +118,6 @@ print_ok "DNS $DOMAIN → tunnel ($UUID.cfargotunnel.com)"
 print_line
 echo -e "  ${C}[5/5] Pasang service tunnel${NC}"
 print_line
-cloudflared service uninstall >/dev/null 2>&1 || true
-rm -rf /etc/cloudflared
-mkdir -p /etc/cloudflared
 cat > /etc/cloudflared/config.yml <<EOF
 tunnel: $UUID
 credentials-file: $HOME/.cloudflared/$UUID.json
@@ -120,8 +125,14 @@ credentials-file: $HOME/.cloudflared/$UUID.json
 ingress:
   - hostname: $DOMAIN
     service: http://localhost:80
+EOF
+if [ "${DOMAIN_PARTS:-0}" -le 3 ]; then
+    cat >> /etc/cloudflared/config.yml <<EOF
   - hostname: www.$DOMAIN
     service: http://localhost:80
+EOF
+fi
+cat >> /etc/cloudflared/config.yml <<EOF
   - service: http_status:404
 EOF
 print_ok "Konfigurasi /etc/cloudflared/config.yml ditulis"

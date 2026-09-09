@@ -400,4 +400,14 @@ if [ -s "$WEB/.env" ]; then
 else
     print_warn ".env tidak ditemukan"
 fi
+PUB_CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 "https://$DOMAIN" 2>/dev/null || echo 000)
+case "$PUB_CODE" in
+    200|301|302|303|307|308)
+        print_ok "Akses publik https://$DOMAIN → HTTP $PUB_CODE (TUNNEL AKTIF)"
+        ;;
+    *)
+        print_warn "Akses publik https://$DOMAIN belum bisa diakses (HTTP $PUB_CODE)"
+        print_warn "Tunnel Cloudflare belum aktif — jalankan menu 9 (Setup Cloudflare Tunnel), tunggu sampai 'AKTIF', lalu buka URL-nya."
+        ;;
+esac
 echo ""
