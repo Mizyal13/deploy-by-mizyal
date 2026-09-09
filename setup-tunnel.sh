@@ -162,15 +162,28 @@ TARGET=$(dig +short CNAME "$DOMAIN" 2>/dev/null | head -1)
 if [ "$TARGET" = "$UUID.cfargotunnel.com" ]; then
     print_ok "DNS $DOMAIN → $UUID.cfargotunnel.com (TERVERIFIKASI)"
 else
+    if [ -n "$TARGET" ] && [ "$TARGET" != "$UUID.cfargotunnel.com" ]; then
+        print_warn "CNAME $DOMAIN menunjuk ke $TARGET (bukan tunnel ini) — perbarui di dashboard Cloudflare"
+    fi
     print_warn "CNAME belum menunjuk tunnel (sekarang: ${TARGET:-kosong}) — coba ulang route dns..."
-    cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" >/dev/null 2>&1 || true
+    ROUTE_OUT=$(cloudflared tunnel route dns "$TUNNEL_NAME" "$DOMAIN" 2>&1 || true)
+    echo -e "  ${DG}$ROUTE_OUT${NC}"
     sleep 10
     TARGET=$(dig +short CNAME "$DOMAIN" 2>/dev/null | head -1)
     if [ "$TARGET" = "$UUID.cfargotunnel.com" ]; then
         print_ok "DNS $DOMAIN → $UUID.cfargotunnel.com (TERVERIFIKASI)"
     else
-        print_warn "Route DNS belum terverifikasi (${TARGET:-kosong}) — login harus memakai akun pemilik zona, lalu:"
-        echo -e "  ${DG}cloudflared tunnel route dns $TUNNEL_NAME $DOMAIN${NC}"
+        if echo "$ROUTE_OUT" | grep -q 'already exists'; then
+            print_warn "Ada record A/AAAA/CNAME lama atas nama $DOMAIN yang menghalangi CNAME tunnel."
+            echo -e "  ${DG}Record penghalang:${NC}"
+            echo -e "  ${DG}  A    = $(dig +short A "$DOMAIN" 2>/dev/null | head -1)${NC}"
+            echo -e "  ${DG}  AAAA = $(dig +short AAAA "$DOMAIN" 2>/dev/null | head -1)${NC}"
+            echo -e "  ${DG}  CNAME= $TARGET${NC}"
+            echo -e "  ${DG}Hapus record tsb di dash.cloudflare.com → zona $(echo "$DOMAIN" | sed 's/^[^.]*\.//') → DNS → Records, lalu ulangi.${NC}"
+        else
+            print_warn "Route DNS belum terverifikasi (${TARGET:-kosong}) — login harus memakai akun pemilik zona, lalu:"
+            echo -e "  ${DG}cloudflared tunnel route dns $TUNNEL_NAME $DOMAIN${NC}"
+        fi
     fi
 fi
 
