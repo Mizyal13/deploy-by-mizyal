@@ -75,6 +75,7 @@ else
 fi
 
 info_lines "  GIT FETCH + RESET KE $GIT_BRANCH"
+git config --global --add safe.directory "$WEB" >/dev/null 2>&1 || true
 cd "$WEB"
 GIT_TERMINAL_PROMPT=0 git fetch origin || error_exit "git fetch gagal — cek koneksi/repo (tidak pakai username/password GitHub)"
 git reset --hard "origin/$GIT_BRANCH" || error_exit "git reset gagal"
