@@ -231,13 +231,25 @@ fi
 if cloudflared --config /etc/cloudflared/config.yml service install; then
     print_ok "Service terpasang"
 else
-    print_warn "Service gagal start — log terakhir:"
-    journalctl -u cloudflared --no-pager -n 20 2>/dev/null || true
-    error_exit "Lihat log di atas, atau: sudo journalctl -u cloudflared -n 50"
+    print_warn "Service gagal start — retry otomatis..."
+    systemctl restart cloudflared 2>/dev/null || true
+    sleep 3
+    if systemctl is-active --quiet cloudflared; then
+        print_ok "cloudflared AKTIF setelah retry"
+    else
+        print_warn "Diagnosa:"
+        echo -e "  ${DG}SRV : $(dig +short SRV _v2-origintunneld._tcp.argotunnel.com 2>/dev/null | tr '\n' ' ')${NC}"
+        echo -e "  ${DG}DNS : $(resolvectl status 2>/dev/null | grep -m4 'DNS Servers' | tr '\n' ' ')${NC}"
+        journalctl -u cloudflared --no-pager -n 30 2>/dev/null || true
+        error_exit "Lihat log di atas, atau: sudo journalctl -u cloudflared -n 50"
+    fi
 fi
 systemctl enable cloudflared >/dev/null 2>&1 || true
 systemctl restart cloudflared
-sleep 3
+for i in 1 2 3 4 5; do
+    systemctl is-active --quiet cloudflared && break
+    sleep 3
+done
 
 if systemctl is-active --quiet cloudflared; then
     print_ok "Cloudflare Tunnel AKTIF (service systemd)"
